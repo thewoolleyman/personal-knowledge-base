@@ -11,12 +11,17 @@
 package acceptance
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,6 +167,114 @@ func TestAcceptance_SearchWithQuery_GivesActionableOutput(t *testing.T) {
 			strings.Contains(combined, "credentials") ||
 			strings.Contains(combined, "No results"),
 		"Output should tell the user what to configure or show results, got: %s", combined)
+}
+
+// --- Tests for new features: auth command, /search endpoint, Gmail ---
+
+func TestAcceptance_AuthHelp(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "auth", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "auth")
+	assert.Contains(t, stdout, "OAuth")
+}
+
+func TestAcceptance_AuthWithoutCredentials_ShowsHelpfulError(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Run auth with no credentials set
+	cmd := exec.Command(binary, "auth")
+	cmd.Env = []string{"HOME=" + t.TempDir()} // clean env, no creds
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+
+	combined := outBuf.String() + errBuf.String()
+	assert.Error(t, err, "Expected error when credentials not configured")
+	assert.True(t,
+		strings.Contains(combined, "PKB_GOOGLE_CLIENT_ID") ||
+			strings.Contains(combined, "credentials") ||
+			strings.Contains(combined, "not configured"),
+		"Should tell user to configure credentials, got: %s", combined)
+}
+
+func TestAcceptance_HelpShowsAuthCommand(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "auth", "Help should list the auth subcommand")
+}
+
+func TestAcceptance_ServeSearchEndpoint(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Start the server on a random port
+	cmd := exec.Command(binary, "serve", "--addr", "127.0.0.1:0")
+	cmd.Env = []string{"HOME=" + t.TempDir()}
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	cmd.Stderr = cmd.Stdout
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	})
+
+	// Read stdout until we see "Listening on" to get the address
+	scanner := bufio.NewScanner(stdout)
+	var addr string
+	deadline := time.After(10 * time.Second)
+	addrCh := make(chan string, 1)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Listening on ") {
+				addrCh <- strings.TrimPrefix(line, "Listening on ")
+				return
+			}
+		}
+	}()
+
+	select {
+	case addr = <-addrCh:
+	case <-deadline:
+		t.Fatal("timeout waiting for server to start")
+	}
+
+	baseURL := "http://" + addr
+
+	// Test 1: /health returns 200
+	resp, err := http.Get(baseURL + "/health")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Test 2: /search without q returns 400 with JSON error
+	resp, err = http.Get(baseURL + "/search")
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/json")
+	var errBody map[string]string
+	require.NoError(t, json.Unmarshal(body, &errBody))
+	assert.Contains(t, errBody["error"], "missing required parameter")
+
+	// Test 3: /search with q returns JSON (500 because no creds, but valid JSON)
+	resp, err = http.Get(baseURL + "/search?q=test")
+	require.NoError(t, err)
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/json")
+	// Should be valid JSON regardless of status code
+	assert.True(t, json.Valid(body), "Response should be valid JSON, got: %s", string(body))
 }
 
 func TestAcceptance_SearchWithCredentials_ReturnsResults(t *testing.T) {

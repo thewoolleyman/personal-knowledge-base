@@ -28,8 +28,8 @@ func TestConnector_Name(t *testing.T) {
 func TestConnector_Search_ReturnsResults(t *testing.T) {
 	mockClient := new(MockDriveClient)
 	mockClient.On("SearchFiles", mock.Anything, "test query").Return([]DriveFile{
-		{ID: "abc123", Name: "Meeting Notes.md", MimeType: "text/markdown", WebViewLink: "https://drive.google.com/file/d/abc123/view"},
-		{ID: "def456", Name: "Project Plan.docx", MimeType: "application/vnd.google-apps.document", WebViewLink: "https://drive.google.com/file/d/def456/view"},
+		{ID: "abc123", Name: "Meeting Notes.md", MimeType: "text/markdown", WebViewLink: "https://drive.google.com/file/d/abc123/view", Description: "Weekly meeting notes"},
+		{ID: "def456", Name: "Project Plan.docx", MimeType: "application/vnd.google-apps.document", WebViewLink: "https://drive.google.com/file/d/def456/view", Description: "Q1 project plan"},
 	}, nil)
 
 	c := NewConnector(mockClient)
@@ -40,7 +40,9 @@ func TestConnector_Search_ReturnsResults(t *testing.T) {
 	assert.Equal(t, "Meeting Notes.md", results[0].Title)
 	assert.Equal(t, "https://drive.google.com/file/d/abc123/view", results[0].URL)
 	assert.Equal(t, "google-drive", results[0].Source)
+	assert.Equal(t, "Weekly meeting notes", results[0].Snippet)
 	assert.Equal(t, "Project Plan.docx", results[1].Title)
+	assert.Equal(t, "Q1 project plan", results[1].Snippet)
 	mockClient.AssertExpectations(t)
 }
 

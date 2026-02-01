@@ -58,7 +58,7 @@ func TestNewAPIClient_ServiceError(t *testing.T) {
 func TestSearchFiles_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"files":[{"id":"1","name":"test.txt","mimeType":"text/plain","webViewLink":"https://drive.google.com/1"}]}`)
+		fmt.Fprint(w, `{"files":[{"id":"1","name":"test.txt","mimeType":"text/plain","webViewLink":"https://drive.google.com/1","description":"A test document"}]}`)
 	}))
 	defer srv.Close()
 
@@ -74,6 +74,7 @@ func TestSearchFiles_Success(t *testing.T) {
 	assert.Equal(t, "test.txt", files[0].Name)
 	assert.Equal(t, "text/plain", files[0].MimeType)
 	assert.Equal(t, "https://drive.google.com/1", files[0].WebViewLink)
+	assert.Equal(t, "A test document", files[0].Description)
 }
 
 func TestSearchFiles_APIError(t *testing.T) {

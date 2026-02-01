@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -61,4 +62,38 @@ func TestServer_StartsAndStops(t *testing.T) {
 	defer cancel()
 	err = s.Shutdown(ctx)
 	assert.NoError(t, err)
+}
+
+func TestServer_Handle_RegistersRoute(t *testing.T) {
+	s := New(":0")
+
+	// Register a custom handler via the Handle method.
+	s.Handle("GET /custom", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("custom-ok"))
+	}))
+
+	require.NoError(t, s.Listen())
+	go func() { _ = s.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		s.Shutdown(ctx)
+	})
+
+	// Verify the custom handler responds.
+	resp, err := http.Get("http://" + s.Addr() + "/custom")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "custom-ok", string(body))
+
+	// Verify /health still works too.
+	resp2, err := http.Get("http://" + s.Addr() + "/health")
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 }

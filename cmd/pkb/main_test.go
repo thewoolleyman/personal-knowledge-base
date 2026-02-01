@@ -8,8 +8,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -19,6 +22,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -410,4 +414,337 @@ func TestServeCommand_ListenError(t *testing.T) {
 	var buf bytes.Buffer
 	err = runWithOutput([]string{"serve", "--addr", ln.Addr().String()}, noopSearch, &buf)
 	assert.Error(t, err)
+}
+
+// waitForServe polls the syncBuffer until "Listening on" appears,
+// then extracts the addr from the output. It also watches errCh for
+// early failures and the deadline for timeouts.
+func waitForServe(t *testing.T, buf *syncBuffer, errCh <-chan error) string {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for server to start")
+		case err := <-errCh:
+			t.Fatalf("serve exited early: %v", err)
+		default:
+		}
+		out := buf.String()
+		if strings.Contains(out, "Listening on") {
+			// Extract the address from "Listening on <addr>\n"
+			line := strings.TrimSpace(out)
+			parts := strings.SplitN(line, "Listening on ", 2)
+			require.Len(t, parts, 2, "expected 'Listening on <addr>' in output")
+			addr := strings.TrimSpace(parts[1])
+			// addr may contain further lines; take only the first line.
+			if idx := strings.Index(addr, "\n"); idx >= 0 {
+				addr = addr[:idx]
+			}
+			return addr
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestServeSearch_MissingQuery_Returns400(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, noopSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/search")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Contains(t, body["error"], "missing required parameter: q")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
+func TestServeSearch_WithQuery_ReturnsJSON(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	mockSearch := func(_ context.Context, query string) ([]connectors.Result, error) {
+		return []connectors.Result{
+			{Title: "API Doc", URL: "https://example.com/api", Source: "mock"},
+		}, nil
+	}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, mockSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/search?q=hello")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var results []connectors.Result
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "API Doc", results[0].Title)
+	assert.Equal(t, "https://example.com/api", results[0].URL)
+	assert.Equal(t, "mock", results[0].Source)
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
+func TestServeSearch_SearchError_Returns500(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	failSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return nil, fmt.Errorf("search engine exploded")
+	}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, failSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/search?q=boom")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Contains(t, body["error"], "search engine exploded")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
+func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	orig := newGmailAPIClient
+	newGmailAPIClient = func(_ context.Context, _ oauth2.TokenSource) (*gmail.APIClient, error) {
+		return nil, fmt.Errorf("gmail not available")
+	}
+	t.Cleanup(func() { newGmailAPIClient = orig })
+
+	fn := buildSearchFn()
+	// Should still work (falls back to Drive only), though Drive search will fail
+	// because there's no real API. The point is it didn't crash from Gmail error.
+	_, err = fn(context.Background(), "test")
+	assert.Error(t, err)
+}
+
+// --- auth command tests ---
+
+func TestAuthCommand_IsRegistered(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := newRootCmd(noopSearch, &buf)
+	authCmd, _, err := cmd.Find([]string{"auth"})
+	require.NoError(t, err)
+	assert.Equal(t, "auth", authCmd.Name())
+}
+
+func TestAuthCommand_MissingCredentials(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "credentials not configured")
+}
+
+func TestAuthCommand_ConfigLoadError(t *testing.T) {
+	orig := loadConfig
+	loadConfig = func() (*config.Config, error) {
+		return nil, fmt.Errorf("config boom")
+	}
+	t.Cleanup(func() { loadConfig = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "load config")
+}
+
+func TestAuthCommand_FlowError(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+
+	orig := openBrowser
+	openBrowser = func(rawURL string) error {
+		return fmt.Errorf("no browser")
+	}
+	t.Cleanup(func() { openBrowser = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "authorization failed")
+	assert.Contains(t, buf.String(), "Opening browser")
+}
+
+func TestAuthCommand_SaveTokenError(t *testing.T) {
+	// Mock token exchange server returns a valid token.
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"test-token","token_type":"Bearer"}`)
+	}))
+	defer tokenServer.Close()
+
+	// Override endpoint to point to mock token server.
+	origEndpoint := googleOAuthEndpoint
+	googleOAuthEndpoint = func() oauth2.Endpoint {
+		return oauth2.Endpoint{
+			AuthURL:  "http://example.com/auth",
+			TokenURL: tokenServer.URL,
+		}
+	}
+	t.Cleanup(func() { googleOAuthEndpoint = origEndpoint })
+
+	// Override loadConfig to use a non-writable token path.
+	origLoad := loadConfig
+	loadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			GoogleClientID:     "test-id",
+			GoogleClientSecret: "test-secret",
+			TokenPath:          "/nonexistent/dir/token.json",
+		}, nil
+	}
+	t.Cleanup(func() { loadConfig = origLoad })
+
+	orig := openBrowser
+	openBrowser = func(rawURL string) error {
+		go func() {
+			parsed, _ := neturl.Parse(rawURL)
+			redirectURI := parsed.Query().Get("redirect_uri")
+			//nolint:gosec // test-only HTTP request
+			resp, err := http.Get(redirectURI + "?code=test-code")
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+		return nil
+	}
+	t.Cleanup(func() { openBrowser = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "save token")
+	assert.Contains(t, buf.String(), "Opening browser")
+}
+
+func TestAuthCommand_SuccessPath(t *testing.T) {
+	// Mock token exchange server.
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"fresh-token","token_type":"Bearer"}`)
+	}))
+	defer tokenServer.Close()
+
+	// Override endpoint to point to mock token server.
+	origEndpoint := googleOAuthEndpoint
+	googleOAuthEndpoint = func() oauth2.Endpoint {
+		return oauth2.Endpoint{
+			AuthURL:  "http://example.com/auth",
+			TokenURL: tokenServer.URL,
+		}
+	}
+	t.Cleanup(func() { googleOAuthEndpoint = origEndpoint })
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+
+	origLoad := loadConfig
+	loadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			GoogleClientID:     "test-id",
+			GoogleClientSecret: "test-secret",
+			TokenPath:          tokenPath,
+		}, nil
+	}
+	t.Cleanup(func() { loadConfig = origLoad })
+
+	orig := openBrowser
+	openBrowser = func(rawURL string) error {
+		go func() {
+			parsed, _ := neturl.Parse(rawURL)
+			redirectURI := parsed.Query().Get("redirect_uri")
+			//nolint:gosec // test-only HTTP request
+			resp, err := http.Get(redirectURI + "?code=test-code")
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+		return nil
+	}
+	t.Cleanup(func() { openBrowser = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	require.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "Opening browser")
+	assert.Contains(t, output, "Token saved to")
+
+	// Verify the token was actually written to disk.
+	loaded, err := gdrive.LoadToken(tokenPath)
+	require.NoError(t, err)
+	assert.Equal(t, "fresh-token", loaded.AccessToken)
 }

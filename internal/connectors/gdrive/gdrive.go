@@ -13,6 +13,7 @@ type DriveFile struct {
 	Name        string
 	MimeType    string
 	WebViewLink string
+	Description string
 }
 
 // DriveClient abstracts the Google Drive API for testability.
@@ -43,10 +44,10 @@ func (c *Connector) Search(ctx context.Context, query string) ([]connectors.Resu
 	results := make([]connectors.Result, len(files))
 	for i, f := range files {
 		results[i] = connectors.Result{
-			Title:  f.Name,
-			URL:    f.WebViewLink,
-			Source: "google-drive",
-			// TODO: populate Snippet from file description or content snippet when available
+			Title:   f.Name,
+			URL:     f.WebViewLink,
+			Source:  "google-drive",
+			Snippet: f.Description,
 		}
 	}
 

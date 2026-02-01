@@ -10,6 +10,7 @@ import (
 type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
+	mux        *http.ServeMux
 }
 
 func New(addr string) *Server {
@@ -23,7 +24,14 @@ func New(addr string) *Server {
 			Addr:    addr,
 			Handler: mux,
 		},
+		mux: mux,
 	}
+}
+
+// Handle registers an additional HTTP handler on the server's mux.
+// Must be called before Serve.
+func (s *Server) Handle(pattern string, handler http.Handler) {
+	s.mux.Handle(pattern, handler)
 }
 
 // Listen binds the socket. Must be called before Serve.

@@ -2,19 +2,23 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/auth"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
 	"github.com/cwoolley/personal-knowledge-base/internal/search"
 	"github.com/cwoolley/personal-knowledge-base/internal/server"
 	"github.com/cwoolley/personal-knowledge-base/internal/tui"
@@ -22,6 +26,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	drive "google.golang.org/api/drive/v3"
+	gm "google.golang.org/api/gmail/v1"
 )
 
 // version is set at build time via ldflags: -X main.version=<value>
@@ -49,6 +54,19 @@ var loadConfig = config.Load
 
 // newAPIClient creates a Drive API client. Overridden in tests.
 var newAPIClient = gdrive.NewAPIClient
+
+// newGmailAPIClient creates a Gmail API client. Overridden in tests.
+var newGmailAPIClient = gmail.NewAPIClient
+
+// openBrowser opens a URL in the default browser. Overridden in tests.
+var openBrowser = func(rawURL string) error {
+	return exec.Command("open", rawURL).Start()
+}
+
+// googleOAuthEndpoint returns the Google OAuth2 endpoint. Overridden in tests.
+var googleOAuthEndpoint = func() oauth2.Endpoint {
+	return google.Endpoint
+}
 
 // httpServer abstracts the server for testability of the serve loop.
 type httpServer interface {
@@ -95,6 +113,26 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr, _ := cmd.Flags().GetString("addr")
 			srv := server.New(addr)
+
+			srv.Handle("GET /search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				q := r.URL.Query().Get("q")
+				if q == "" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
+					return
+				}
+				results, err := searchFn(r.Context(), q)
+				if err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(results)
+			}))
+
 			if err := srv.Listen(); err != nil {
 				return err
 			}
@@ -124,10 +162,53 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		},
 	}
 
+	authCmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Authenticate with Google (opens browser for OAuth flow)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appCfg, err := loadConfig()
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			if appCfg.GoogleClientID == "" || appCfg.GoogleClientSecret == "" {
+				return fmt.Errorf("Google credentials not configured.\n\n" +
+					"Set these environment variables:\n" +
+					"  export PKB_GOOGLE_CLIENT_ID=\"your-client-id\"\n" +
+					"  export PKB_GOOGLE_CLIENT_SECRET=\"your-client-secret\"")
+			}
+
+			oauthCfg := &oauth2.Config{
+				ClientID:     appCfg.GoogleClientID,
+				ClientSecret: appCfg.GoogleClientSecret,
+				Scopes:       []string{drive.DriveReadonlyScope, gm.GmailReadonlyScope},
+				Endpoint:     googleOAuthEndpoint(),
+			}
+
+			flow := &auth.Flow{
+				Config:  oauthCfg,
+				OpenURL: openBrowser,
+			}
+
+			fmt.Fprintln(out, "Opening browser for Google authorization...")
+			token, err := flow.Run(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("authorization failed: %w", err)
+			}
+
+			if err := gdrive.SaveToken(appCfg.TokenPath, token); err != nil {
+				return fmt.Errorf("save token: %w", err)
+			}
+
+			fmt.Fprintf(out, "Token saved to %s\n", appCfg.TokenPath)
+			return nil
+		},
+	}
+
 	root.AddCommand(searchCmd)
 	root.AddCommand(serveCmd)
 	root.AddCommand(interactiveCmd)
 	root.AddCommand(versionCmd)
+	root.AddCommand(authCmd)
 	return root
 }
 
@@ -165,7 +246,7 @@ func buildSearchFn() SearchFunc {
 		oauthCfg := &oauth2.Config{
 			ClientID:     appCfg.GoogleClientID,
 			ClientSecret: appCfg.GoogleClientSecret,
-			Scopes:       []string{drive.DriveReadonlyScope},
+			Scopes:       []string{drive.DriveReadonlyScope, gm.GmailReadonlyScope},
 			Endpoint:     google.Endpoint,
 		}
 
@@ -180,8 +261,18 @@ func buildSearchFn() SearchFunc {
 			return nil, fmt.Errorf("failed to create Google Drive client: %w", err)
 		}
 
-		connector := gdrive.NewConnector(client)
-		engine := search.New(connector)
+		driveConnector := gdrive.NewConnector(client)
+
+		// Create Gmail connector with the same token source.
+		gmailClient, err := newGmailAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
+		if err != nil {
+			// Gmail is optional — fall back to Drive only.
+			engine := search.New(driveConnector)
+			return engine.Search(ctx, query)
+		}
+		gmailConnector := gmail.NewConnector(gmailClient)
+
+		engine := search.New(driveConnector, gmailConnector)
 		return engine.Search(ctx, query)
 	}
 }

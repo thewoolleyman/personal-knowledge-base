@@ -41,7 +41,7 @@ func (c *APIClient) SearchFiles(ctx context.Context, query string) ([]DriveFile,
 	q := buildSearchQuery(query)
 	call := c.service.Files.List().
 		Q(q).
-		Fields("files(id, name, mimeType, webViewLink)").
+		Fields("files(id, name, mimeType, webViewLink, description)").
 		PageSize(50).
 		Context(ctx)
 
@@ -57,6 +57,7 @@ func (c *APIClient) SearchFiles(ctx context.Context, query string) ([]DriveFile,
 			Name:        f.Name,
 			MimeType:    f.MimeType,
 			WebViewLink: f.WebViewLink,
+			Description: f.Description,
 		}
 	}
 
