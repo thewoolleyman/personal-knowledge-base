@@ -34,6 +34,29 @@ var makeSignalCh = func() (chan os.Signal, func()) {
 	return ch, func() { signal.Stop(ch) }
 }
 
+// teaRunner abstracts tea.Program.Run for testability.
+type teaRunner interface {
+	Run() (tea.Model, error)
+}
+
+// newTeaProgram creates a tea.Program. Overridden in tests.
+var newTeaProgram = func(model tea.Model) teaRunner {
+	return tea.NewProgram(model)
+}
+
+// loadConfig loads application config. Overridden in tests.
+var loadConfig = config.Load
+
+// newAPIClient creates a Drive API client. Overridden in tests.
+var newAPIClient = gdrive.NewAPIClient
+
+// httpServer abstracts the server for testability of the serve loop.
+type httpServer interface {
+	Serve() error
+	Addr() string
+	Shutdown(ctx context.Context) error
+}
+
 // SearchFunc abstracts the search operation for testability.
 type SearchFunc func(ctx context.Context, query string) ([]connectors.Result, error)
 
@@ -76,28 +99,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(out, "Listening on %s\n", srv.Addr())
-
-			errCh := make(chan error, 1)
-			go func() {
-				errCh <- srv.Serve()
-			}()
-
-			sigCh, stopSignals := makeSignalCh()
-			defer stopSignals()
-
-			select {
-			case sig := <-sigCh:
-				fmt.Fprintf(out, "Received %s, shutting down...\n", sig)
-				if err := srv.Shutdown(context.Background()); err != nil {
-					return fmt.Errorf("shutdown: %w", err)
-				}
-				return nil
-			case err := <-errCh:
-				if errors.Is(err, http.ErrServerClosed) {
-					return nil
-				}
-				return err
-			}
+			return serveLoop(srv, out)
 		},
 	}
 	serveCmd.Flags().String("addr", ":8080", "listen address")
@@ -108,7 +110,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Aliases: []string{"tui"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := tui.NewModel(tui.SearchFunc(searchFn))
-			p := tea.NewProgram(model)
+			p := newTeaProgram(model)
 			_, err := p.Run()
 			return err
 		},
@@ -142,7 +144,7 @@ func run(args []string, searchFn SearchFunc) error {
 }
 
 func buildSearchFn() SearchFunc {
-	appCfg, err := config.Load()
+	appCfg, err := loadConfig()
 	if err != nil {
 		return func(_ context.Context, _ string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
@@ -173,7 +175,7 @@ func buildSearchFn() SearchFunc {
 				"You may need to complete the OAuth flow first.", appCfg.TokenPath, err)
 		}
 
-		client, err := gdrive.NewAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
+		client, err := newAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Google Drive client: %w", err)
 		}
@@ -181,6 +183,30 @@ func buildSearchFn() SearchFunc {
 		connector := gdrive.NewConnector(client)
 		engine := search.New(connector)
 		return engine.Search(ctx, query)
+	}
+}
+
+func serveLoop(srv httpServer, out io.Writer) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Serve()
+	}()
+
+	sigCh, stopSignals := makeSignalCh()
+	defer stopSignals()
+
+	select {
+	case sig := <-sigCh:
+		fmt.Fprintf(out, "Received %s, shutting down...\n", sig)
+		if err := srv.Shutdown(context.Background()); err != nil {
+			return fmt.Errorf("shutdown: %w", err)
+		}
+		return nil
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	}
 }
 

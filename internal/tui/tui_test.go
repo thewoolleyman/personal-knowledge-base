@@ -229,6 +229,102 @@ func TestModel_SearchResult_ClearsCancelOnSuccess(t *testing.T) {
 	assert.False(t, cancelled, "cancel should not be called on success, just cleared")
 }
 
+func TestModel_HandleKey_CtrlC_Quits(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	require.NotNil(t, cmd)
+	// tea.Quit returns a special quit message
+	msg := cmd()
+	assert.IsType(t, tea.QuitMsg{}, msg)
+}
+
+func TestModel_HandleKey_EscapeInInput_Quits(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	assert.Equal(t, stateInput, m.state)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	require.NotNil(t, cmd)
+	msg := cmd()
+	assert.IsType(t, tea.QuitMsg{}, msg)
+}
+
+// Update forwards non-key messages to textinput when in stateInput.
+func TestModel_Update_NonKeyMsg_InInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	model := updated.(Model)
+	assert.Equal(t, stateInput, model.state)
+}
+
+// Update returns (m, nil) for non-key messages when NOT in stateInput.
+func TestModel_Update_NonKeyMsg_NotInInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateResults
+	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	model := updated.(Model)
+	assert.Equal(t, stateResults, model.state)
+	assert.Nil(t, cmd)
+}
+
+// Enter with empty query stays in input state.
+func TestModel_HandleKey_EmptyQueryEnter(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.searchInput.SetValue("")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	assert.Equal(t, stateInput, model.state)
+	assert.Nil(t, cmd)
+}
+
+// Enter in non-input state is a no-op.
+func TestModel_HandleKey_EnterInNonInputState(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateResults
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	assert.Equal(t, stateResults, model.state)
+	assert.Nil(t, cmd)
+}
+
+// Regular keys in stateInput are forwarded to textinput.
+func TestModel_HandleKey_RegularKeyInInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model := updated.(Model)
+	assert.Equal(t, stateInput, model.state)
+}
+
+// Regular keys in non-input state are ignored.
+func TestModel_HandleKey_RegularKeyNotInInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateLoading
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model := updated.(Model)
+	assert.Equal(t, stateLoading, model.state)
+	assert.Nil(t, cmd)
+}
+
+func TestModel_View_LoadingState(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateLoading
+	view := m.View()
+	assert.Contains(t, view, "Searching...")
+}
+
+func TestModel_View_EmptyResults(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateResults
+	m.results = []connectors.Result{}
+	view := m.View()
+	assert.Contains(t, view, "No results found.")
+}
+
+func TestModel_View_WithError(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.err = fmt.Errorf("test error")
+	view := m.View()
+	assert.Contains(t, view, "Error: test error")
+}
+
 // BUG-012: cancel must be set to nil after search completes (error path).
 func TestModel_SearchResult_ClearsCancelOnError(t *testing.T) {
 	m := NewModel(mockSearchFn(nil, nil))

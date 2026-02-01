@@ -1,6 +1,8 @@
 package gdrive
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,6 +80,22 @@ func TestSaveToken_ClosesFileExplicitly(t *testing.T) {
 	loaded, err := LoadToken(path)
 	require.NoError(t, err)
 	assert.Equal(t, "close-test", loaded.AccessToken)
+}
+
+// failCloser wraps bytes.Buffer with a Close that always errors.
+type failCloser struct {
+	bytes.Buffer
+}
+
+func (f *failCloser) Close() error {
+	return fmt.Errorf("close failed")
+}
+
+func TestEncodeAndClose_CloseError(t *testing.T) {
+	wc := &failCloser{}
+	err := encodeAndClose(wc, &oauth2.Token{AccessToken: "test"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "close failed")
 }
 
 func TestSaveToken_ReadOnlyDir(t *testing.T) {

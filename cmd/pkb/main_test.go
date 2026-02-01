@@ -3,17 +3,25 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 // syncBuffer is a thread-safe bytes.Buffer for use in concurrent tests.
@@ -218,4 +226,188 @@ func TestBuildSearchFn_PropagatesConfigError(t *testing.T) {
 	_, err := fn(context.Background(), "test")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
+}
+
+func TestBuildSearchFn_ConfigLoadError(t *testing.T) {
+	orig := loadConfig
+	loadConfig = func() (*config.Config, error) {
+		return nil, fmt.Errorf("config error")
+	}
+	t.Cleanup(func() { loadConfig = orig })
+
+	fn := buildSearchFn()
+	_, err := fn(context.Background(), "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+func TestBuildSearchFn_TokenLoadError(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_TOKEN_PATH", "/nonexistent/path/token.json")
+
+	fn := buildSearchFn()
+	_, err := fn(context.Background(), "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load OAuth token")
+}
+
+func TestBuildSearchFn_APIClientError(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	orig := newAPIClient
+	newAPIClient = func(_ context.Context, _ oauth2.TokenSource) (*gdrive.APIClient, error) {
+		return nil, fmt.Errorf("api client error")
+	}
+	t.Cleanup(func() { newAPIClient = orig })
+
+	fn := buildSearchFn()
+	_, err = fn(context.Background(), "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create Google Drive client")
+}
+
+func TestBuildSearchFn_SuccessPath(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	// The closure creates a real Drive client. The search call will fail
+	// because there's no real API, but all lines in buildSearchFn are exercised.
+	_, err = fn(context.Background(), "test")
+	assert.Error(t, err)
+}
+
+// mockTeaRunner implements teaRunner for testing.
+type mockTeaRunner struct {
+	err error
+}
+
+func (m *mockTeaRunner) Run() (tea.Model, error) {
+	return nil, m.err
+}
+
+func TestInteractiveCommand_RunsProgram(t *testing.T) {
+	orig := newTeaProgram
+	newTeaProgram = func(_ tea.Model) teaRunner {
+		return &mockTeaRunner{}
+	}
+	t.Cleanup(func() { newTeaProgram = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"interactive"}, noopSearch, &buf)
+	assert.NoError(t, err)
+}
+
+func TestInteractiveCommand_Error(t *testing.T) {
+	orig := newTeaProgram
+	newTeaProgram = func(_ tea.Model) teaRunner {
+		return &mockTeaRunner{err: fmt.Errorf("terminal error")}
+	}
+	t.Cleanup(func() { newTeaProgram = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"interactive"}, noopSearch, &buf)
+	assert.Error(t, err)
+}
+
+// mockHTTPServer implements httpServer for testing serveLoop.
+type mockHTTPServer struct {
+	serveFunc   func() error
+	shutdownErr error
+	addr        string
+}
+
+func (m *mockHTTPServer) Serve() error        { return m.serveFunc() }
+func (m *mockHTTPServer) Addr() string         { return m.addr }
+func (m *mockHTTPServer) Shutdown(_ context.Context) error { return m.shutdownErr }
+
+func TestServeLoop_ErrServerClosed(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	mock := &mockHTTPServer{
+		serveFunc: func() error { return http.ErrServerClosed },
+	}
+	var buf bytes.Buffer
+	err := serveLoop(mock, &buf)
+	assert.NoError(t, err)
+}
+
+func TestServeLoop_ServerError(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	mock := &mockHTTPServer{
+		serveFunc: func() error { return fmt.Errorf("bind error") },
+	}
+	var buf bytes.Buffer
+	err := serveLoop(mock, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "bind error")
+}
+
+func TestServeLoop_ShutdownError(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	serveDone := make(chan struct{})
+	mock := &mockHTTPServer{
+		serveFunc:   func() error { <-serveDone; return http.ErrServerClosed },
+		shutdownErr: fmt.Errorf("shutdown failed"),
+	}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- serveLoop(mock, buf)
+	}()
+
+	testCh <- syscall.SIGINT
+
+	select {
+	case err := <-errCh:
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "shutdown")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for serveLoop to return")
+	}
+	close(serveDone)
+}
+
+func TestServeCommand_ListenError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	var buf bytes.Buffer
+	err = runWithOutput([]string{"serve", "--addr", ln.Addr().String()}, noopSearch, &buf)
+	assert.Error(t, err)
 }

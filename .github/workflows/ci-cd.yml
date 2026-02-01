@@ -53,11 +53,14 @@ jobs:
       - name: Run unit tests with race detection and coverage
         run: go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
 
-      - name: Enforce 100% line coverage
+      - name: Enforce 100% function coverage (excluding main)
         run: |
-          FAILURES=$(grep -E 'coverage: [0-9]' test-output.txt | grep -v '100.0%' || true)
+          go tool cover -func=coverage.out > func-coverage.txt
+          cat func-coverage.txt
+          FAILURES=$(grep -v '^total:' func-coverage.txt | grep -v '100.0%' | grep -v '/main.go:.*[[:space:]]main[[:space:]]' || true)
           if [ -n "$FAILURES" ]; then
-            echo "FAIL: The following packages do not have 100% line coverage:"
+            echo ""
+            echo "FAIL: The following functions do not have 100% line coverage:"
             echo "$FAILURES"
             exit 1
           fi

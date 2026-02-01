@@ -3,6 +3,7 @@ package gdrive
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/oauth2"
@@ -14,8 +15,14 @@ func SaveToken(path string, token *oauth2.Token) error {
 	if err != nil {
 		return fmt.Errorf("create token file: %w", err)
 	}
-	err = json.NewEncoder(f).Encode(token)
-	if closeErr := f.Close(); closeErr != nil && err == nil {
+	return encodeAndClose(f, token)
+}
+
+// encodeAndClose writes a token as JSON and closes the writer,
+// surfacing both encode and close errors.
+func encodeAndClose(wc io.WriteCloser, token *oauth2.Token) error {
+	err := json.NewEncoder(wc).Encode(token)
+	if closeErr := wc.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
 	if err != nil {

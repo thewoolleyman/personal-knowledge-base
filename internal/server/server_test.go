@@ -27,6 +27,16 @@ func TestServer_Serve_ErrorWithoutListen(t *testing.T) {
 	assert.Contains(t, err.Error(), "must call Listen before Serve")
 }
 
+func TestServer_Listen_ErrorPortInUse(t *testing.T) {
+	s1 := New(":0")
+	require.NoError(t, s1.Listen())
+	t.Cleanup(func() { s1.listener.Close() })
+
+	s2 := New(s1.Addr())
+	err := s2.Listen()
+	assert.Error(t, err)
+}
+
 func TestServer_StartsAndStops(t *testing.T) {
 	s := New(":0")
 

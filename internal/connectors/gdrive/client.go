@@ -15,9 +15,14 @@ type APIClient struct {
 	service *drive.Service
 }
 
+// createDriveService creates a Drive API service. Overridden in tests.
+var createDriveService = func(ctx context.Context, opts ...option.ClientOption) (*drive.Service, error) {
+	return drive.NewService(ctx, opts...)
+}
+
 // NewAPIClient creates a real Drive API client using the given OAuth2 token source.
 func NewAPIClient(ctx context.Context, tokenSource oauth2.TokenSource) (*APIClient, error) {
-	srv, err := drive.NewService(ctx, option.WithTokenSource(tokenSource))
+	srv, err := createDriveService(ctx, option.WithTokenSource(tokenSource))
 	if err != nil {
 		return nil, fmt.Errorf("create drive service: %w", err)
 	}
