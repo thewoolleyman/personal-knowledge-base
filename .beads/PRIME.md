@@ -60,6 +60,7 @@ Search memory FIRST — don't reinvent approaches that already worked.
 - If CI fails after push, fix it immediately -- do not start new beads
 - If failure is infra/external, get human verification before skipping
 - NEVER use `--no-verify` to skip pre-commit hooks
+- Pipeline auto-creates a P0 bug bead on main-branch failures -- check `bd ready` to see them
 
 ## Essential Commands
 

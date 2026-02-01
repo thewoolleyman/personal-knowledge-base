@@ -188,3 +188,66 @@ jobs:
           git add VERSION
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
           git push origin main
+
+  # =============================================================================
+  # Failure safety net: Auto-create P0 bug bead on unexpected CI failure
+  # =============================================================================
+  notify-failure:
+    name: Auto-file CI failure bead
+    runs-on: ubuntu-latest
+    needs: [lint, secrets-scan, unit-tests, acceptance-tests, release]
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      (needs.lint.result == 'failure' ||
+       needs.secrets-scan.result == 'failure' ||
+       needs.unit-tests.result == 'failure' ||
+       needs.acceptance-tests.result == 'failure' ||
+       needs.release.result == 'failure')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Create P0 bug bead for CI failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Collect which jobs failed
+          FAILED_JOBS=""
+          if [ "${{ needs.lint.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}lint, "; fi
+          if [ "${{ needs.secrets-scan.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}secrets-scan, "; fi
+          if [ "${{ needs.unit-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}unit-tests, "; fi
+          if [ "${{ needs.acceptance-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}acceptance-tests, "; fi
+          if [ "${{ needs.release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}release, "; fi
+          FAILED_JOBS="${FAILED_JOBS%, }"
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NOW="$(date -u +"%Y-%m-%dT%H:%M:%S.000000+00:00")"
+          ISSUE_ID="personal-knowledge-base-ci${{ github.run_number }}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+
+          # Append a P0 bug bead to issues.jsonl (same format as bd create)
+          jq -nc \
+            --arg id "$ISSUE_ID" \
+            --arg title "CI FAILURE: $FAILED_JOBS failed on main ($SHORT_SHA)" \
+            --arg desc "Automated P0 bug — CI pipeline failed on main branch.\n\nFailed jobs: $FAILED_JOBS\nCommit: $GITHUB_SHA\nRun: $RUN_URL\n\nThis bead was auto-created by the CI failure safety net. Fix immediately before starting new work." \
+            --arg now "$NOW" \
+            '{id:$id,title:$title,description:$desc,status:"open",priority:0,issue_type:"bug",created_at:$now,created_by:"ci-pipeline",updated_at:$now}' \
+            >> .beads/issues.jsonl
+
+          echo "Created P0 bead: $ISSUE_ID"
+          echo "  Title: CI FAILURE: $FAILED_JOBS failed on main ($SHORT_SHA)"
+          echo "  Run: $RUN_URL"
+
+      - name: Commit and push bead
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add .beads/issues.jsonl
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "ci: auto-create P0 bug bead for pipeline failure [skip ci]"
+          git push origin main

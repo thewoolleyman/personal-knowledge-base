@@ -802,6 +802,7 @@ Rules:
 4. The human may allow temporary skip -- but YOU must ask, never assume
 5. NEVER use `git commit --no-verify` to skip pre-commit hooks
 6. All linting tools (golangci-lint, gitleaks, go vet) belong in the SINGLE ci-cd.yml pipeline -- never create standalone workflow files for linting
+7. The pipeline auto-creates a P0 bug bead on any unexpected failure on main -- agents will see it on next `bd sync` and must fix it before starting new work
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
