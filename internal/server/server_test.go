@@ -70,7 +70,7 @@ func TestServer_Handle_RegistersRoute(t *testing.T) {
 	// Register a custom handler via the Handle method.
 	s.Handle("GET /custom", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("custom-ok"))
+		_, _ = w.Write([]byte("custom-ok"))
 	}))
 
 	require.NoError(t, s.Listen())
@@ -78,7 +78,7 @@ func TestServer_Handle_RegistersRoute(t *testing.T) {
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		s.Shutdown(ctx)
+		_ = s.Shutdown(ctx)
 	})
 
 	// Verify the custom handler responds.

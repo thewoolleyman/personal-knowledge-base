@@ -171,31 +171,28 @@ It also allowlists:
 
 ### Layer 4: CI scanning
 
-**File**: `.github/workflows/secrets-scan.yml`
+**File**: `.github/workflows/ci-cd.yml` (the `secrets-scan` job)
 
-CI uses the same mise-managed gitleaks -- same version, same config:
+The secrets scan runs as a Stage 1 job in the CI/CD pipeline, alongside lint.
+Stage 2 tests depend on both lint and secrets-scan passing. This uses the same
+mise-managed gitleaks -- same version, same config:
 
 ```yaml
-name: Secret Scanning
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-jobs:
-  gitleaks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: jdx/mise-action@v2
-      - run: mise x -- gitleaks detect --source . --no-banner -c .gitleaks.toml
+# Inside ci-cd.yml, Stage 1 (alongside lint)
+secrets-scan:
+  name: Secrets Scan
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: jdx/mise-action@v2
+    - run: mise x -- gitleaks detect --source . --no-banner -c .gitleaks.toml
 ```
 
 `jdx/mise-action@v2` installs mise and runs `mise install` to get the pinned
 gitleaks version from `mise.toml`. `fetch-depth: 0` ensures full commit history
-is scanned.
+is scanned. Test jobs will not run if secrets are detected.
 
 ## Tracked state files: complete inventory
 
@@ -264,8 +261,8 @@ These are the files committed to git by beads and claude-flow tooling:
 3. **Add pre-commit hook** that resolves gitleaks via `mise x --` first, then
    falls back to PATH. See this repo's `.git/hooks/pre-commit` for the pattern.
 
-4. **Add CI workflow** -- `.github/workflows/secrets-scan.yml` using
-   `jdx/mise-action@v2` + `mise x -- gitleaks detect`.
+4. **Add CI scanning** -- add a `secrets-scan` job to your CI/CD pipeline using
+   `jdx/mise-action@v2` + `mise x -- gitleaks detect`. Gate downstream jobs on it.
 
 5. **Gitignore agent state** -- ensure all runtime/learning data is excluded:
    ```gitignore

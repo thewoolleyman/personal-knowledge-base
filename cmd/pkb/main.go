@@ -119,18 +119,18 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				if q == "" {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusBadRequest)
-					json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
 					return
 				}
 				results, err := searchFn(r.Context(), q)
 				if err != nil {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
-					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(results)
+				_ = json.NewEncoder(w).Encode(results)
 			}))
 
 			if err := srv.Listen(); err != nil {

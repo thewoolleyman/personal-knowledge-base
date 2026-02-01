@@ -14,6 +14,7 @@
 [ ] 4. git commit -m "..."     (commit code)
 [ ] 5. bd sync                 (commit any new beads changes)
 [ ] 6. git push                (push to remote)
+[ ] 6.5. Verify CI green     (gh run list --limit=1; if red, fix BEFORE continuing)
 [ ] 7. Store patterns          (memory store for anything learned)
 ```
 
@@ -53,6 +54,12 @@ Search memory FIRST — don't reinvent approaches that already worked.
 - When in doubt, prefer bd—persistence you don't need beats lost context
 - Git workflow: hooks auto-sync, run `bd sync` at session end
 - Session management: check `bd ready` for available work
+
+### CI Rules
+- CI must be green before pushing new work
+- If CI fails after push, fix it immediately -- do not start new beads
+- If failure is infra/external, get human verification before skipping
+- NEVER use `--no-verify` to skip pre-commit hooks
 
 ## Essential Commands
 
