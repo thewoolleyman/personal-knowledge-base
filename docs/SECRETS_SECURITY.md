@@ -135,26 +135,29 @@ someone removes the root gitignore entries, learning data stays untracked.
 
 ### Layer 3: Pre-commit scanning
 
-**Files**: `.git/hooks/pre-commit`, `.gitleaks.toml`
+**Files**: `.git/hooks/pre-commit`, `.gitleaks.toml`, `mise.toml`
 
-The pre-commit hook runs `gitleaks protect --staged` before every commit:
+Gitleaks is managed via [mise](https://mise.jdx.dev/) so the version is pinned
+in `mise.toml` and auto-installed -- no manual `brew install` needed.
 
-```bash
-# Gitleaks secret scanning (runs before beads flush)
-if command -v gitleaks >/dev/null 2>&1; then
-    REPO_ROOT="$(git rev-parse --show-toplevel)"
-    CONFIG="${REPO_ROOT}/.gitleaks.toml"
-    if [ -f "$CONFIG" ]; then
-        gitleaks protect --staged --no-banner -c "$CONFIG"
-    else
-        gitleaks protect --staged --no-banner
-    fi
-    # Non-zero exit = secrets found, block the commit
-fi
+```toml
+# mise.toml
+[tools]
+gitleaks = "8.21"
 ```
 
-If gitleaks is not installed, it warns and continues (doesn't block
-collaborators who haven't installed it -- CI is the backstop).
+The pre-commit hook resolves gitleaks via mise first, falls back to PATH:
+
+```bash
+if command -v mise >/dev/null 2>&1; then
+    GITLEAKS_CMD="mise x -- gitleaks"
+elif command -v gitleaks >/dev/null 2>&1; then
+    GITLEAKS_CMD="gitleaks"
+else
+    echo "Warning: gitleaks not available (install mise)" >&2
+    GITLEAKS_CMD=""
+fi
+```
 
 The `.gitleaks.toml` config defines 14 rules covering:
 - Anthropic, OpenAI, AWS, GCP, GitHub, Slack API keys/tokens
@@ -166,11 +169,11 @@ It also allowlists:
 - Gitignored paths (already excluded from commits)
 - `.env.example` and test files (contain placeholder values)
 
-**Install**: `brew install gitleaks`
-
 ### Layer 4: CI scanning
 
 **File**: `.github/workflows/secrets-scan.yml`
+
+CI uses the same mise-managed gitleaks -- same version, same config:
 
 ```yaml
 name: Secret Scanning
@@ -185,14 +188,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0    # full history for thorough scanning
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@v2
+      - run: mise x -- gitleaks detect --source . --no-banner -c .gitleaks.toml
 ```
 
-The action automatically uses `.gitleaks.toml` from the repo root. `fetch-depth: 0`
-ensures it scans full commit history, not just the latest commit.
+`jdx/mise-action@v2` installs mise and runs `mise install` to get the pinned
+gitleaks version from `mise.toml`. `fetch-depth: 0` ensures full commit history
+is scanned.
 
 ## Tracked state files: complete inventory
 
@@ -239,7 +242,12 @@ These are the files committed to git by beads and claude-flow tooling:
 
 ### Minimum viable setup (any repo with agent tooling)
 
-1. **Install gitleaks**: `brew install gitleaks`
+1. **Pin gitleaks via mise** -- add `mise.toml` to repo root:
+   ```toml
+   [tools]
+   gitleaks = "8.21"
+   ```
+   Then `mise install`. No brew, no manual downloads. CI uses `jdx/mise-action@v2`.
 
 2. **Add `.gitleaks.toml`** to repo root. Start with the gitleaks
    [default config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml)
@@ -253,19 +261,11 @@ These are the files committed to git by beads and claude-flow tooling:
      ]
    ```
 
-3. **Add pre-commit hook** -- either manually in `.git/hooks/pre-commit` or
-   via [pre-commit framework](https://pre-commit.com/):
-   ```yaml
-   # .pre-commit-config.yaml
-   repos:
-     - repo: https://github.com/gitleaks/gitleaks
-       rev: v8.21.2
-       hooks:
-         - id: gitleaks
-   ```
+3. **Add pre-commit hook** that resolves gitleaks via `mise x --` first, then
+   falls back to PATH. See this repo's `.git/hooks/pre-commit` for the pattern.
 
 4. **Add CI workflow** -- `.github/workflows/secrets-scan.yml` using
-   `gitleaks/gitleaks-action@v2`.
+   `jdx/mise-action@v2` + `mise x -- gitleaks detect`.
 
 5. **Gitignore agent state** -- ensure all runtime/learning data is excluded:
    ```gitignore

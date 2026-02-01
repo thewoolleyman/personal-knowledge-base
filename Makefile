@@ -55,9 +55,9 @@ clean:
 run: build
 	./$(BINARY) --help
 
-## scan-secrets: Run gitleaks to detect hardcoded secrets (install with: brew install gitleaks)
+## scan-secrets: Run gitleaks to detect hardcoded secrets (managed via mise)
 scan-secrets:
-	gitleaks detect --source . --no-banner -c .gitleaks.toml --verbose
+	mise x -- gitleaks detect --source . --no-banner -c .gitleaks.toml --verbose
 
 ## verify-hooks: Prove two-tier logging, context bundles, and recall work end-to-end
 verify-hooks:

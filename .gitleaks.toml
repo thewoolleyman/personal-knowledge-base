@@ -9,8 +9,10 @@ title = "pkb gitleaks config"
 [allowlist]
   description = "Global allowlist"
 
-  # Paths that are gitignored (never committed) -- safe to ignore.
+  # Paths to ignore: gitignored dirs, example files, agent definitions (contain
+  # fake credentials in documentation), and test files.
   paths = [
+    # Gitignored directories (never committed)
     '''\.claude-flow/learning/''',
     '''\.claude-flow/daemon\.log''',
     '''\.claude-flow/daemon\.pid''',
@@ -21,13 +23,14 @@ title = "pkb gitleaks config"
     '''\.bv/''',
     '''token\.json''',
     '''\.env$''',
-  ]
-
-  # Example / placeholder files contain fake credential patterns.
-  files = [
+    # Example / placeholder files
     '''\.env\.example''',
     '''testdata/''',
     '''_test\.go$''',
+    # Agent definitions, commands, and skills (contain example credentials in docs)
+    '''\.claude/agents/''',
+    '''\.claude/commands/''',
+    '''\.claude/skills/''',
   ]
 
 # --------------------------------------------------------------------------
@@ -54,6 +57,14 @@ title = "pkb gitleaks config"
       '''(?i)placeholder''',
       '''(?i)changeme''',
       '''(?i)password123''',
+      # Go code: variable names, struct fields, os.Getenv() calls
+      '''(?i)(?:appCfg|cfg|config)\.\w*(?:Secret|Password)''',
+      '''(?i)(?:client|oauth|api)Secret\b''',
+      '''(?:os\.Getenv|process\.env)\b''',
+      # Sed redaction patterns in hook scripts and docs (contain literal SECRET=, PASSWORD=, etc.)
+      '''\[REDACTED\]''',
+      # Common test/example values in agent definitions and docs
+      '''(?i)(?:test-secret|secure_?pass|wrong_?pass|new_?pass)''',
     ]
 
 [[rules]]
