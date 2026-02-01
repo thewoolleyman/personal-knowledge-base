@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # hook-bridge.sh - Bridges Claude Code hooks (stdin JSON) to claude-flow CLI
 #
 # Claude Code passes hook data as JSON via stdin, NOT as env vars.
@@ -82,7 +82,7 @@ case "$MODE" in
     # Call the real CLI stop-check which checks for unconsolidated patterns
     # Exit code 2 = block Claude from stopping (patterns need consolidation)
     # Exit code 0 = ok to stop
-    exec npx @claude-flow/cli@latest hooks stop-check 2>/dev/null || echo '{"ok":true}'
+    npx @claude-flow/cli@latest hooks stop-check 2>/dev/null || echo '{"ok":true}'
     ;;
 
   # ── SessionEnd ──────────────────────────────────────────────

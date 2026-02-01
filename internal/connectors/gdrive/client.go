@@ -3,6 +3,7 @@ package gdrive
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
@@ -23,8 +24,16 @@ func NewAPIClient(ctx context.Context, tokenSource oauth2.TokenSource) (*APIClie
 	return &APIClient{service: srv}, nil
 }
 
+// buildSearchQuery constructs a Drive API query string, escaping single quotes
+// in user input to prevent query injection.
+func buildSearchQuery(query string) string {
+	escaped := strings.ReplaceAll(query, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	return fmt.Sprintf("fullText contains '%s' and trashed = false", escaped)
+}
+
 func (c *APIClient) SearchFiles(ctx context.Context, query string) ([]DriveFile, error) {
-	q := fmt.Sprintf("fullText contains '%s' and trashed = false", query)
+	q := buildSearchQuery(query)
 	call := c.service.Files.List().
 		Q(q).
 		Fields("files(id, name, mimeType, webViewLink)").

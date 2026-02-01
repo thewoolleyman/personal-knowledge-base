@@ -10,7 +10,7 @@ import (
 
 // SaveToken writes an OAuth2 token to a file as JSON.
 func SaveToken(path string, token *oauth2.Token) error {
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("create token file: %w", err)
 	}

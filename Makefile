@@ -24,7 +24,7 @@ test-accept:
 
 ## test-int: Run component integration tests (requires Google Drive credentials)
 test-int:
-	go test -tags=integration -race -v ./...
+	go test -tags=integration -race -v -run TestIntegration ./...
 
 ## test-all: Run unit, acceptance, and integration tests
 test-all: test test-accept test-int

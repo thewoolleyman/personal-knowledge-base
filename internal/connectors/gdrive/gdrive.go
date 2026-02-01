@@ -46,6 +46,7 @@ func (c *Connector) Search(ctx context.Context, query string) ([]connectors.Resu
 			Title:  f.Name,
 			URL:    f.WebViewLink,
 			Source: "google-drive",
+			// TODO: populate Snippet from file description or content snippet when available
 		}
 	}
 

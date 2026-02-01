@@ -1,6 +1,7 @@
 package gdrive
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -32,4 +33,17 @@ func TestSaveAndLoadToken(t *testing.T) {
 func TestLoadToken_FileNotFound(t *testing.T) {
 	_, err := LoadToken("/nonexistent/token.json")
 	assert.Error(t, err)
+}
+
+func TestSaveToken_FilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+	tok := &oauth2.Token{AccessToken: "test-token"}
+
+	err := SaveToken(path, tok)
+	require.NoError(t, err)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 }

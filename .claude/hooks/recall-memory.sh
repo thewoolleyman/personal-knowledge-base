@@ -23,7 +23,7 @@ QUERY="$(printf '%s' "$PROMPT" | head -c 200)"
 FOUND=""
 
 # ── Strategy 1: Semantic search via memory DB ──────────────────────
-DB=".swarm/memory.db"
+DB=".claude/memory.db"
 if [ -f "$DB" ] && [ -s "$DB" ]; then
   RESULTS="$(npx @claude-flow/cli@latest memory search --query "$QUERY" --limit 5 2>/dev/null)" || RESULTS=""
   if printf '%s' "$RESULTS" | grep -q '|.*|.*|.*|'; then

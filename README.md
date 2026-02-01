@@ -49,7 +49,8 @@ All development on this project uses [Claude Flow](https://github.com/ruvnet/cla
 
 ### Prerequisites
 
-- Go 1.21+ (`brew install go`)
+- Go 1.25+ (`brew install go`)
+- `golangci-lint` (optional, for `make lint`: `brew install golangci-lint`)
 - `make` (pre-installed on macOS)
 - Google Cloud project with Drive API enabled (for Google Drive search)
 

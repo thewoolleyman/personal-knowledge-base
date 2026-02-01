@@ -7,9 +7,13 @@ import (
 	"os"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/search"
+	"github.com/cwoolley/personal-knowledge-base/internal/server"
+	"github.com/cwoolley/personal-knowledge-base/internal/tui"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -48,7 +52,36 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		},
 	}
 
+	serveCmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the HTTP API server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addr, _ := cmd.Flags().GetString("addr")
+			srv := server.New(addr)
+			if err := srv.Listen(); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Listening on %s\n", srv.Addr())
+			return srv.Serve()
+		},
+	}
+	serveCmd.Flags().String("addr", ":8080", "listen address")
+
+	interactiveCmd := &cobra.Command{
+		Use:     "interactive",
+		Short:   "Launch the interactive TUI",
+		Aliases: []string{"tui"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			model := tui.NewModel(tui.SearchFunc(searchFn))
+			p := tea.NewProgram(model)
+			_, err := p.Run()
+			return err
+		},
+	}
+
 	root.AddCommand(searchCmd)
+	root.AddCommand(serveCmd)
+	root.AddCommand(interactiveCmd)
 	return root
 }
 
@@ -65,10 +98,9 @@ func run(args []string, searchFn SearchFunc) error {
 }
 
 func buildSearchFn() SearchFunc {
-	clientID := os.Getenv("PKB_GOOGLE_CLIENT_ID")
-	clientSecret := os.Getenv("PKB_GOOGLE_CLIENT_SECRET")
+	appCfg, _ := config.Load()
 
-	if clientID == "" || clientSecret == "" {
+	if appCfg.GoogleClientID == "" || appCfg.GoogleClientSecret == "" {
 		return func(_ context.Context, _ string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("Google Drive credentials not configured.\n\n" +
 				"Set these environment variables:\n" +
@@ -79,25 +111,20 @@ func buildSearchFn() SearchFunc {
 	}
 
 	return func(ctx context.Context, query string) ([]connectors.Result, error) {
-		cfg := &oauth2.Config{
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
+		oauthCfg := &oauth2.Config{
+			ClientID:     appCfg.GoogleClientID,
+			ClientSecret: appCfg.GoogleClientSecret,
 			Scopes:       []string{drive.DriveReadonlyScope},
 			Endpoint:     google.Endpoint,
 		}
 
-		tokenPath := os.Getenv("PKB_TOKEN_PATH")
-		if tokenPath == "" {
-			tokenPath = "token.json"
-		}
-
-		tok, err := gdrive.LoadToken(tokenPath)
+		tok, err := gdrive.LoadToken(appCfg.TokenPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load OAuth token from %s: %w\n\n"+
-				"You may need to complete the OAuth flow first.", tokenPath, err)
+				"You may need to complete the OAuth flow first.", appCfg.TokenPath, err)
 		}
 
-		client, err := gdrive.NewAPIClient(ctx, cfg.TokenSource(ctx, tok))
+		client, err := gdrive.NewAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Google Drive client: %w", err)
 		}

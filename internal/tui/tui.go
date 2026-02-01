@@ -36,6 +36,7 @@ type Model struct {
 	cursor      int
 	state       state
 	err         error
+	cancel      context.CancelFunc
 }
 
 // NewModel creates a new TUI model with the given search function.
@@ -81,6 +82,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyEscape:
 		if m.state != stateInput {
+			if m.cancel != nil {
+				m.cancel()
+				m.cancel = nil
+			}
 			m.state = stateInput
 			m.searchInput.Focus()
 			return m, nil
@@ -93,8 +98,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if query == "" {
 				return m, nil
 			}
+			ctx, cancel := context.WithCancel(context.Background())
+			m.cancel = cancel
 			m.state = stateLoading
-			return m, m.doSearch(query)
+			return m, m.doSearch(ctx, query)
 		}
 
 	case tea.KeyUp:
@@ -132,9 +139,10 @@ func (m Model) handleSearchResult(msg searchResultMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) doSearch(query string) tea.Cmd {
+func (m Model) doSearch(ctx context.Context, query string) tea.Cmd {
+	searchFn := m.searchFn
 	return func() tea.Msg {
-		results, err := m.searchFn(context.Background(), query)
+		results, err := searchFn(ctx, query)
 		return searchResultMsg{results: results, err: err}
 	}
 }
@@ -184,7 +192,7 @@ func (m Model) View() string {
 
 	b.WriteString("\n  esc: back • ctrl+c: quit")
 	if m.state == stateResults {
-		b.WriteString(" • ↑/↓: navigate • enter: open")
+		b.WriteString(" • ↑/↓: navigate")
 	}
 	b.WriteString("\n")
 

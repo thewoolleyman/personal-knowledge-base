@@ -99,3 +99,80 @@ func TestModel_View_ContainsSearchPrompt(t *testing.T) {
 	view := m.View()
 	assert.Contains(t, view, "Search")
 }
+
+func TestModel_View_ResultsStatusBar_NoEnterOpen(t *testing.T) {
+	results := []connectors.Result{
+		{Title: "Doc A", URL: "https://example.com/a", Source: "test"},
+	}
+	m := NewModel(mockSearchFn(results, nil))
+	m.state = stateResults
+	m.results = results
+	m.cursor = 0
+
+	view := m.View()
+
+	assert.Contains(t, view, "navigate", "status bar should mention navigate")
+	assert.NotContains(t, view, "enter: open", "status bar must not advertise unimplemented enter: open")
+}
+
+func TestModel_DoSearch_SetsCancelFunc(t *testing.T) {
+	searchCalled := make(chan context.Context, 1)
+	m := NewModel(func(ctx context.Context, query string) ([]connectors.Result, error) {
+		searchCalled <- ctx
+		return nil, nil
+	})
+
+	m.searchInput.SetValue("test")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+
+	// The cancel function must be set after initiating a search
+	assert.NotNil(t, model.cancel, "cancel func should be set when search starts")
+
+	// Execute the command so the search function runs
+	if cmd != nil {
+		cmd()
+	}
+
+	// Verify the search was called with a non-background context
+	ctx := <-searchCalled
+	assert.NotNil(t, ctx)
+}
+
+func TestModel_EscapeDuringLoading_CancelsContext(t *testing.T) {
+	searchCalled := make(chan context.Context, 1)
+	m := NewModel(func(ctx context.Context, query string) ([]connectors.Result, error) {
+		searchCalled <- ctx
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+
+	// Start a search
+	m.searchInput.SetValue("test")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	assert.Equal(t, stateLoading, model.state)
+
+	// Run the search command in a background goroutine
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if cmd != nil {
+			cmd()
+		}
+	}()
+
+	// Wait for search function to be called so we can grab its context
+	ctx := <-searchCalled
+
+	// Press Escape while in loading state
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	model = updated.(Model)
+
+	// Should return to input state
+	assert.Equal(t, stateInput, model.state)
+
+	// The context should be cancelled
+	<-done
+	assert.Error(t, ctx.Err(), "context should be cancelled after Escape")
+}

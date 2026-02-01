@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
@@ -36,4 +37,69 @@ func TestSearchCommand_PrintsResults(t *testing.T) {
 func TestSearchCommand_NoQuery(t *testing.T) {
 	err := run([]string{"search"}, nil)
 	assert.Error(t, err)
+}
+
+// BUG-011: Test the "no results" output path.
+func TestSearchCommand_NoResults(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return []connectors.Result{}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "empty"}, mockSearch, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "No results found.")
+}
+
+// BUG-011: Test the search error path.
+func TestSearchCommand_Error(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return nil, fmt.Errorf("connection failed")
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test"}, mockSearch, &buf)
+	assert.Error(t, err)
+}
+
+// BUG-008: buildSearchFn uses config.Load() instead of inline os.Getenv.
+func TestBuildSearchFn_UsesConfig(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
+
+	fn := buildSearchFn()
+	_, err := fn(context.Background(), "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
+}
+
+// BUG-009: The "serve" subcommand is registered and accepts --addr.
+func TestServeCommand_IsRegistered(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return nil, nil
+	}
+	var buf bytes.Buffer
+	cmd := newRootCmd(mockSearch, &buf)
+
+	// The serve subcommand must exist.
+	serveCmd, _, err := cmd.Find([]string{"serve"})
+	require.NoError(t, err)
+	assert.Equal(t, "serve", serveCmd.Name())
+
+	// The --addr flag must be defined.
+	f := serveCmd.Flags().Lookup("addr")
+	require.NotNil(t, f)
+	assert.Equal(t, ":8080", f.DefValue)
+}
+
+// BUG-010: The "interactive" subcommand is registered with alias "tui".
+func TestInteractiveCommand_IsRegistered(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return nil, nil
+	}
+	var buf bytes.Buffer
+	cmd := newRootCmd(mockSearch, &buf)
+
+	interactiveCmd, _, err := cmd.Find([]string{"interactive"})
+	require.NoError(t, err)
+	assert.Equal(t, "interactive", interactiveCmd.Name())
+	assert.Contains(t, interactiveCmd.Aliases, "tui")
 }
