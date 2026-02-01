@@ -80,7 +80,8 @@ case "$TOOL_NAME" in
     LABEL="${DESC:-$PROMPT}"
     LABEL="$(printf '%s' "$LABEL" | head -c 200 | jq -Rs '.')"
     [ "$LABEL" = '""' ] && exit 0
-    printf '{"op":"task","desc":%s,"agent":"%s"}\n' "$LABEL" "$AGENT" >> "$BUNDLE_FILE"
+    AGENT_JSON="$(printf '%s' "$AGENT" | jq -Rs '.')"
+    printf '{"op":"task","desc":%s,"agent":%s}\n' "$LABEL" "$AGENT_JSON" >> "$BUNDLE_FILE"
     ;;
   Bash)
     CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')"

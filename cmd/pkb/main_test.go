@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"syscall"
 	"testing"
@@ -141,6 +142,14 @@ func TestInteractiveCommand_IsRegistered(t *testing.T) {
 
 // BUG-007: serve command gracefully shuts down on SIGINT/SIGTERM.
 func TestServeCommand_GracefulShutdown(t *testing.T) {
+	// Inject a test signal channel so we don't send a real SIGINT to the process.
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
 	buf := &syncBuffer{}
 	errCh := make(chan error, 1)
 
@@ -166,8 +175,8 @@ func TestServeCommand_GracefulShutdown(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "Listening on")
 
-	// Send SIGINT to trigger graceful shutdown.
-	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	// Send SIGINT via the injected channel instead of a real signal.
+	testCh <- syscall.SIGINT
 
 	select {
 	case err := <-errCh:

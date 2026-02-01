@@ -19,7 +19,7 @@ func SaveToken(path string, token *oauth2.Token) error {
 		err = closeErr
 	}
 	if err != nil {
-		return fmt.Errorf("write token file: %w", err)
+		return fmt.Errorf("save token file: %w", err)
 	}
 	return nil
 }

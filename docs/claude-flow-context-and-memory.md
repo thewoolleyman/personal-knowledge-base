@@ -168,7 +168,7 @@ repo's Python hook scripts, this uses a two-tier architecture:
 | `log-hook-event.sh` | Tier 1: raw payload logging | All events (wildcard matcher) |
 | `build-context-bundle.sh` | Tier 2: curated context bundles | PostToolUse (Read/Write/Edit/Bash/Task), UserPromptSubmit |
 | `recall-memory.sh` | Read side: dual-strategy recall | UserPromptSubmit, PreToolUse (Task) |
-| `hook-bridge.sh` | Upstream bridge (unchanged) | Various pre/post events |
+| `hook-bridge.sh` | Upstream bridge (locally modified: added stop-check and session-end handlers) | Various pre/post events |
 
 **Data flow:**
 
@@ -216,7 +216,7 @@ READ PATH (agent spawn):
   available) means recall works on fresh clones and corrupt DBs
 - Zero overhead during editing (file append vs npx cold-start)
 - No native dependencies (pure bash + jq)
-- Doesn't modify hook-bridge.sh (upstream file)
+- Only modifies hook-bridge.sh to add stop-check and session-end handlers
 - Additive settings.json changes (new hook groups, not modifying existing)
 - JSONL is human-readable and debuggable
 
@@ -555,9 +555,10 @@ test -z "$OUTPUT"  # expect: empty (skipped)
   entry) and provide cross-clone persistence without any database setup.
 - Raw hook logs are gitignored. They contain full payloads and grow quickly.
   Use them for debugging hook behavior, then delete when no longer needed.
-- These hooks are additive — they don't modify `hook-bridge.sh` or any
-  upstream-generated files. They can be removed cleanly when upstream fixes
-  land (see "Checklist for removing the workaround" above).
+- These hooks are additive. `hook-bridge.sh` was locally modified to add
+  stop-check and session-end handlers (commits f2956b1 and 5b66c11), but the
+  logging/bundle/recall hooks can be removed cleanly when upstream fixes land
+  (see "Checklist for removing the workaround" above).
 - The memory DB (`.swarm/memory.db`) is optional. If missing or corrupt,
   recall-memory.sh falls back to grepping context bundles. Run
   `memory init --force` to (re)create the DB if you want semantic search.

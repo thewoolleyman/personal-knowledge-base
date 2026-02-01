@@ -24,6 +24,13 @@ import (
 	drive "google.golang.org/api/drive/v3"
 )
 
+// makeSignalCh creates the OS signal channel. Overridden in tests.
+var makeSignalCh = func() (chan os.Signal, func()) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	return ch, func() { signal.Stop(ch) }
+}
+
 // SearchFunc abstracts the search operation for testability.
 type SearchFunc func(ctx context.Context, query string) ([]connectors.Result, error)
 
@@ -72,8 +79,8 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				errCh <- srv.Serve()
 			}()
 
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			sigCh, stopSignals := makeSignalCh()
+			defer stopSignals()
 
 			select {
 			case sig := <-sigCh:
