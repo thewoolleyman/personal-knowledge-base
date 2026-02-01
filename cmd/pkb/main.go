@@ -24,6 +24,9 @@ import (
 	drive "google.golang.org/api/drive/v3"
 )
 
+// version is set at build time via ldflags: -X main.version=<value>
+var version = "dev"
+
 // makeSignalCh creates the OS signal channel. Overridden in tests.
 var makeSignalCh = func() (chan os.Signal, func()) {
 	ch := make(chan os.Signal, 1)
@@ -111,9 +114,18 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		},
 	}
 
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print the version of pkb",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintf(out, "pkb version %s\n", version)
+		},
+	}
+
 	root.AddCommand(searchCmd)
 	root.AddCommand(serveCmd)
 	root.AddCommand(interactiveCmd)
+	root.AddCommand(versionCmd)
 	return root
 }
 

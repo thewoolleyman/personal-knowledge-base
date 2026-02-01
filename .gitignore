@@ -5,7 +5,7 @@ cache/
 *.db
 *.db-shm
 *.db-wal
-pkb
+/pkb
 .claude-flow/learning/hook_logs/
 .claude-flow/learning/context_bundles/
 .swarm/state.json

@@ -11,6 +11,7 @@
 package acceptance
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,6 +65,19 @@ func runPKB(t *testing.T, binary string, args ...string) (stdout, stderr string,
 	return outBuf.String(), errBuf.String(), exitCode
 }
 
+// buildBinaryWithVersion compiles the pkb binary with a version injected via ldflags.
+func buildBinaryWithVersion(t *testing.T, ver string) string {
+	t.Helper()
+	root := projectRoot(t)
+	binary := filepath.Join(t.TempDir(), "pkb")
+	ldflags := fmt.Sprintf("-X main.version=%s", ver)
+	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", binary, "./cmd/pkb")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "Failed to build binary: %s", string(out))
+	return binary
+}
+
 // --- Tests mirror what the README tells a human to do ---
 
 func TestAcceptance_HelpShowsSearchCommand(t *testing.T) {
@@ -110,6 +124,24 @@ func TestAcceptance_SearchWithoutQuery_ShowsUsageError(t *testing.T) {
 
 	assert.NotEqual(t, 0, exitCode, "Expected non-zero exit code when no query provided")
 	assert.Contains(t, stderr, "requires at least 1 arg")
+}
+
+func TestAcceptance_VersionShowsVersionString(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "version")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "pkb version")
+}
+
+func TestAcceptance_VersionLdflagsInjection(t *testing.T) {
+	binary := buildBinaryWithVersion(t, "1.2.3")
+
+	stdout, _, exitCode := runPKB(t, binary, "version")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "pkb version 1.2.3")
 }
 
 func TestAcceptance_SearchWithQuery_GivesActionableOutput(t *testing.T) {

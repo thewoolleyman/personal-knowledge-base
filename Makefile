@@ -1,7 +1,8 @@
-.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks
+.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version
 
 BINARY := pkb
 BUILD_DIR := .
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 ## help: Show this help message
 help:
@@ -12,7 +13,11 @@ help:
 
 ## build: Compile the pkb binary
 build:
-	go build -o $(BUILD_DIR)/$(BINARY) ./cmd/pkb
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/pkb
+
+## version: Print the current version
+version:
+	@echo $(VERSION)
 
 ## test: Run unit tests with race detection and coverage
 test:

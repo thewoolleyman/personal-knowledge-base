@@ -188,6 +188,23 @@ func TestServeCommand_GracefulShutdown(t *testing.T) {
 	assert.Contains(t, buf.String(), "shutting down")
 }
 
+func TestVersionCommand_PrintsVersion(t *testing.T) {
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"version"}, noopSearch, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "pkb version")
+	assert.Contains(t, buf.String(), version)
+}
+
+func TestVersionCommand_IsRegistered(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := newRootCmd(noopSearch, &buf)
+
+	versionCmd, _, err := cmd.Find([]string{"version"})
+	require.NoError(t, err)
+	assert.Equal(t, "version", versionCmd.Name())
+}
+
 // BUG-006: buildSearchFn propagates config.Load() errors.
 // Note: config.Load() currently never errors, but the code path is
 // now defensive. This test verifies the structure is correct by
