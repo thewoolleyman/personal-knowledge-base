@@ -56,6 +56,7 @@ verify-hooks:
 	@command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not found"; exit 1; }
 	@test -x .claude/hooks/persist-events.sh || { echo "FAIL: persist-events.sh missing or not executable"; exit 1; }
 	@test -x .claude/hooks/import-events.sh || { echo "FAIL: import-events.sh missing or not executable"; exit 1; }
+	@test -x .claude/hooks/recall-memory.sh || { echo "FAIL: recall-memory.sh missing or not executable"; exit 1; }
 	@echo "==> Cleaning test state..."
 	@rm -f .claude-flow/learning/events.jsonl
 	@echo "==> Testing persist-events.sh with Edit event..."
@@ -81,5 +82,18 @@ verify-hooks:
 	@test ! -f .claude-flow/learning/events.jsonl || { echo "FAIL: events.jsonl should have been rotated"; exit 1; }
 	@ls .claude-flow/learning/events-*.jsonl.bak >/dev/null 2>&1 || { echo "FAIL: backup file not created"; exit 1; }
 	@echo "    OK: Events imported and log rotated"
+	@echo "==> Testing recall-memory.sh (memory retrieval on prompt)..."
+	@RECALL_OUT=$$(echo '{"prompt":"How do hooks persist data to the memory database?"}' | .claude/hooks/recall-memory.sh 2>/dev/null); \
+	 if echo "$$RECALL_OUT" | grep -q "Relevant memory"; then \
+	   echo "    OK: recall-memory.sh returned relevant results"; \
+	 else \
+	   echo "    WARN: recall-memory.sh returned no results (memory may be empty)"; \
+	 fi
+	@SKIP_OUT=$$(echo '{"prompt":"hi"}' | .claude/hooks/recall-memory.sh 2>/dev/null); \
+	 if [ -z "$$SKIP_OUT" ]; then \
+	   echo "    OK: Short prompts correctly skipped"; \
+	 else \
+	   echo "FAIL: Short prompt should produce no output"; exit 1; \
+	 fi
 	@echo ""
 	@echo "All checks passed."

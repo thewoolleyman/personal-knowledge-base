@@ -131,6 +131,9 @@ compaction.
 | `hooks post-edit` / `hooks post-task` | nowhere | "Automatic" but stubs |
 | `session-restore` (SessionStart) | reads from memory DB | Yes -- fires on new session |
 | `session-end` (SessionEnd) | writes session summary | Yes -- fires on session exit (after our fix) |
+| `persist-events.sh` (PostToolUse) | `.claude-flow/learning/events.jsonl` | Yes -- fires on Edit/Bash/Task (our workaround) |
+| `import-events.sh` (SessionEnd) | `.swarm/memory.db` | Yes -- batch-imports events at session end (our workaround) |
+| `recall-memory.sh` (UserPromptSubmit) | reads from memory DB | Yes -- searches memory on every user prompt (our workaround) |
 
 ## Local Workaround Plan
 
@@ -144,41 +147,61 @@ require explicit CLI calls. We need automatic persistence without:
 - Adding native dependencies (`better-sqlite3`)
 - Breaking when upstream eventually fixes this
 
-### Approach: JSONL Event Log + Batch Import
+### Approach: JSONL Event Log + Batch Import + Automatic Recall
 
 A zero-dependency append log captures events at near-zero cost (~1ms per hook
 via bash+jq file append). At session end, a batch import writes accumulated
-events to the working `memory store` SQLite path.
+events to the working `memory store` SQLite path. On each new user prompt,
+a recall hook searches the memory DB and injects relevant past context.
 
 **New files:**
 
 - `.claude/hooks/persist-events.sh` -- captures PostToolUse events to JSONL
 - `.claude/hooks/import-events.sh` -- batch-imports JSONL to `memory store`
+- `.claude/hooks/recall-memory.sh` -- searches memory on each user prompt,
+  injects relevant results into Claude's context via stdout
 
 **Modified files:**
 
 - `.claude/settings.json` -- additional PostToolUse hooks for persist-events.sh,
-  import step added to SessionEnd
+  import step added to SessionEnd, recall-memory.sh added to UserPromptSubmit
+  and PreToolUse (Task matcher)
 
 **Data flow:**
 
 ```
-Edit/Bash/Task completes
-  -> Claude Code fires PostToolUse
-  -> hook-bridge.sh post-edit (existing, calls CLI stub)
-  -> persist-events.sh (NEW, appends to events.jsonl)
-     ... session continues ...
-Session ends
-  -> import-events.sh reads events.jsonl
-  -> Calls `memory store` for each unique file/pattern
-  -> events.jsonl rotated
-Next session starts
-  -> session-restore loads from memory DB (existing)
-  -> `memory search` finds previously stored patterns
+WRITE PATH (during session):
+  Edit/Bash/Task completes
+    -> Claude Code fires PostToolUse
+    -> hook-bridge.sh post-edit (existing, calls CLI stub -- does nothing)
+    -> persist-events.sh (appends to events.jsonl)
+       ... session continues ...
+
+WRITE PATH (session end):
+  Session ends
+    -> import-events.sh reads events.jsonl
+    -> Calls `memory store` for session summary (namespace: sessions)
+    -> Calls `memory store` for per-file edit counts (namespace: edit-patterns)
+    -> events.jsonl rotated to .jsonl.bak
+
+READ PATH (next session or same session):
+  User types a prompt
+    -> recall-memory.sh reads prompt from stdin JSON
+    -> Runs `memory search --query "<prompt>" --limit 5`
+    -> Prints results to stdout
+    -> Claude Code injects stdout into <system-reminder> tag
+    -> Claude sees relevant past context before starting work
+
+READ PATH (agent spawn):
+  Task agent is about to be spawned (PreToolUse)
+    -> recall-memory.sh searches memory for task-relevant context
+    -> Results injected into Claude's context before agent starts
 ```
 
 **Why this approach:**
 
+- **Closed loop** -- data written at session end is automatically surfaced on
+  relevant future prompts, without relying on the AI to remember to check
 - Zero overhead during editing (file append vs npx cold-start)
 - No native dependencies (pure bash + jq)
 - Doesn't modify hook-bridge.sh (upstream file)
@@ -228,9 +251,17 @@ repo's own use.
 2. [ ] Verify `npx @claude-flow/cli@latest hooks post-edit --file X --success true` writes to `.swarm/memory.db`
 3. [ ] Remove `.claude/hooks/persist-events.sh`
 4. [ ] Remove `.claude/hooks/import-events.sh`
-5. [ ] Remove extra PostToolUse hook groups from `.claude/settings.json`
-6. [ ] Remove import-events call from SessionEnd hooks in settings.json
-7. [ ] Verify `memory search` returns data written by hooks
+5. [ ] Remove `.claude/hooks/recall-memory.sh` (only if upstream adds automatic context injection)
+6. [ ] Remove extra PostToolUse hook groups from `.claude/settings.json`
+7. [ ] Remove import-events call from SessionEnd hooks in settings.json
+8. [ ] Remove recall-memory.sh from UserPromptSubmit and PreToolUse hooks in settings.json
+   (only if upstream provides equivalent context injection)
+9. [ ] Verify `memory search` returns data written by hooks
+
+**Note:** `recall-memory.sh` may be worth keeping even after upstream fixes
+land, since it provides automatic context injection that the upstream hooks
+don't offer. The upstream pipeline writes data to the DB but doesn't
+automatically surface it on future prompts.
 
 ## Also Fixed Locally
 
@@ -305,7 +336,29 @@ runs at SessionEnd and:
 7. Rotates `events.jsonl` to `events-<timestamp>.jsonl.bak`
 8. Deletes backups beyond the 5 most recent
 
-### 3. Add hooks to `.claude/settings.json`
+### 3. Create the memory-recall hook
+
+Create `.claude/hooks/recall-memory.sh` (make it executable). This is the
+**read side** — it closes the loop by searching memory on every user prompt
+and injecting relevant past context. This script:
+
+- Reads the user's prompt from stdin JSON (`.prompt` field)
+- Skips prompts under 15 characters (not worth a search for "hi" or "yes")
+- Runs `npx @claude-flow/cli@latest memory search --query "<prompt>" --limit 5`
+- Prints matching results to stdout
+- Claude Code injects hook stdout into `<system-reminder>` tags, so the
+  results become part of Claude's context for that turn
+
+Key implementation details:
+
+- Check that `.swarm/memory.db` exists and is non-empty before calling npx
+- Truncate the search query to 200 chars
+- Count data rows in the CLI table output (rows starting with `|`, minus 1
+  for the header row) — only output if there are actual data rows
+- All errors are suppressed (`2>/dev/null`, `|| exit 0`) to avoid blocking
+  the user's prompt
+
+### 4. Add hooks to `.claude/settings.json`
 
 Add three **new** PostToolUse hook groups (do not modify existing ones):
 
@@ -339,6 +392,33 @@ Add three **new** PostToolUse hook groups (do not modify existing ones):
 }
 ```
 
+Add `recall-memory.sh` to `UserPromptSubmit` **before** the existing route
+hook (so memory context is injected before routing):
+
+```json
+{
+  "type": "command",
+  "command": ".claude/hooks/recall-memory.sh",
+  "timeout": 10000,
+  "continueOnError": true
+}
+```
+
+Optionally, add `recall-memory.sh` to `PreToolUse` with a `Task` matcher so
+agents get relevant memory context before they start:
+
+```json
+{
+  "matcher": "^Task$",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/recall-memory.sh",
+    "timeout": 10000,
+    "continueOnError": true
+  }]
+}
+```
+
 Add `import-events.sh` to `SessionEnd` **before** any existing session-end
 hooks (so events are imported before the session summary is generated):
 
@@ -351,7 +431,7 @@ hooks (so events are imported before the session summary is generated):
 }
 ```
 
-### 4. Update `.gitignore`
+### 5. Update `.gitignore`
 
 Add these patterns to prevent committing ephemeral event logs:
 
@@ -360,7 +440,24 @@ Add these patterns to prevent committing ephemeral event logs:
 .claude-flow/learning/*.jsonl.bak
 ```
 
-### 5. Verify
+### 6. Initialize the memory database
+
+The memory DB may need initialization (or re-initialization if corrupt):
+
+```bash
+npx @claude-flow/cli@latest memory init --force --verbose
+```
+
+This creates the schema in `.swarm/memory.db`. Verify with:
+
+```bash
+npx @claude-flow/cli@latest memory store --key "test" --value "hello" --namespace test
+npx @claude-flow/cli@latest memory search --query "hello" --namespace test
+```
+
+If search returns the entry, the DB is working.
+
+### 7. Verify
 
 Add a Makefile target (or run manually) that exercises the full pipeline:
 
@@ -391,6 +488,14 @@ wc -l < .claude-flow/learning/events.jsonl  # expect: 3
 # Confirm rotation
 ls .claude-flow/learning/events-*.jsonl.bak  # expect: one backup file
 test ! -f .claude-flow/learning/events.jsonl  # expect: original removed
+
+# Test recall-memory.sh returns relevant results
+echo '{"prompt":"How do hooks persist data to the memory database?"}' \
+  | .claude/hooks/recall-memory.sh  # expect: "Relevant memory from past sessions"
+
+# Test short prompts are skipped (no npx cost)
+OUTPUT=$(echo '{"prompt":"hi"}' | .claude/hooks/recall-memory.sh)
+test -z "$OUTPUT"  # expect: empty (skipped)
 ```
 
 ### Notes
@@ -398,11 +503,18 @@ test ! -f .claude-flow/learning/events.jsonl  # expect: original removed
 - `persist-events.sh` must be fast (<2ms) since it fires on every tool use.
   File append with `printf >> file` is effectively free. Do not call `npx` or
   any network operation from this hook.
+- `recall-memory.sh` calls `npx` (~200ms) on every user prompt. This is
+  acceptable because it runs once per user message (not per tool use), and
+  the latency is masked by the time the user spends reading the response.
+  Short prompts (<15 chars) are skipped to avoid unnecessary searches.
 - `import-events.sh` calls `npx` (with cold-start cost) but only runs once at
   session end, so this is acceptable.
 - These hooks are additive -- they don't modify `hook-bridge.sh` or any
   upstream-generated files. They can be removed cleanly when upstream fixes
   land (see "Checklist for removing the workaround" above).
+- The memory DB (`.swarm/memory.db`) must be initialized before the recall
+  hook can return results. Run `memory init --force` if the DB is missing or
+  corrupt (the file header says SQLite but tables are missing).
 
 ## References
 
