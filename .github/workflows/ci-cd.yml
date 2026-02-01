@@ -51,7 +51,16 @@ jobs:
           go-version-file: go.mod
 
       - name: Run unit tests with race detection and coverage
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+
+      - name: Enforce 100% line coverage
+        run: |
+          FAILURES=$(grep -E 'coverage: [0-9]' test-output.txt | grep -v '100.0%' || true)
+          if [ -n "$FAILURES" ]; then
+            echo "FAIL: The following packages do not have 100% line coverage:"
+            echo "$FAILURES"
+            exit 1
+          fi
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
