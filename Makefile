@@ -50,44 +50,59 @@ clean:
 run: build
 	./$(BINARY) --help
 
-## verify-hooks: Prove event-logging and memory-import hooks work end-to-end
+## verify-hooks: Prove two-tier logging, context bundles, and recall work end-to-end
 verify-hooks:
 	@echo "==> Checking prerequisites..."
 	@command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not found"; exit 1; }
-	@test -x .claude/hooks/persist-events.sh || { echo "FAIL: persist-events.sh missing or not executable"; exit 1; }
-	@test -x .claude/hooks/import-events.sh || { echo "FAIL: import-events.sh missing or not executable"; exit 1; }
+	@test -x .claude/hooks/log-hook-event.sh || { echo "FAIL: log-hook-event.sh missing or not executable"; exit 1; }
+	@test -x .claude/hooks/build-context-bundle.sh || { echo "FAIL: build-context-bundle.sh missing or not executable"; exit 1; }
 	@test -x .claude/hooks/recall-memory.sh || { echo "FAIL: recall-memory.sh missing or not executable"; exit 1; }
 	@echo "==> Cleaning test state..."
-	@rm -f .claude-flow/learning/events.jsonl
-	@echo "==> Testing persist-events.sh with Edit event..."
-	@echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test-file.go"}}' | .claude/hooks/persist-events.sh
-	@test -f .claude-flow/learning/events.jsonl || { echo "FAIL: events.jsonl not created after Edit event"; exit 1; }
-	@jq -e 'select(.type=="edit" and .file=="/tmp/test-file.go")' .claude-flow/learning/events.jsonl >/dev/null || { echo "FAIL: Edit event not found in events.jsonl"; exit 1; }
-	@echo "    OK: Edit event recorded"
-	@echo "==> Testing persist-events.sh with Task event..."
-	@echo '{"tool_name":"Task","tool_input":{"description":"Test task","prompt":"Do something","subagent_type":"coder"}}' | .claude/hooks/persist-events.sh
-	@jq -e 'select(.type=="task" and .agent=="coder")' .claude-flow/learning/events.jsonl >/dev/null || { echo "FAIL: Task event not found"; exit 1; }
-	@echo "    OK: Task event recorded"
-	@echo "==> Testing persist-events.sh with Bash event..."
-	@echo '{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}' | .claude/hooks/persist-events.sh
-	@jq -e 'select(.type=="command")' .claude-flow/learning/events.jsonl >/dev/null || { echo "FAIL: Bash event not found"; exit 1; }
-	@echo "    OK: Bash event recorded"
+	@rm -rf .claude-flow/learning/hook_logs/test-session
+	@rm -f .claude-flow/learning/context_bundles/*_test-session.jsonl
+	@echo "==> Testing log-hook-event.sh (raw event logging)..."
+	@echo '{"session_id":"test-session","hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/tmp/test.go"}}' \
+	  | .claude/hooks/log-hook-event.sh
+	@test -f .claude-flow/learning/hook_logs/test-session/PostToolUse.jsonl \
+	  || { echo "FAIL: raw log file not created"; exit 1; }
+	@jq -e '.payload.tool_name=="Edit"' .claude-flow/learning/hook_logs/test-session/PostToolUse.jsonl >/dev/null \
+	  || { echo "FAIL: raw log entry missing tool_name"; exit 1; }
+	@echo "    OK: Raw event logged to hook_logs/test-session/PostToolUse.jsonl"
+	@echo "==> Testing build-context-bundle.sh with Edit event..."
+	@echo '{"session_id":"test-session","tool_name":"Edit","tool_input":{"file_path":"'$$(pwd)'/internal/server/server.go"}}' \
+	  | .claude/hooks/build-context-bundle.sh --type tool
+	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
+	 test -n "$$BUNDLE" || { echo "FAIL: context bundle not created"; exit 1; }; \
+	 jq -e 'select(.op=="edit" and .file=="internal/server/server.go")' "$$BUNDLE" >/dev/null \
+	   || { echo "FAIL: edit entry not found or path not relative"; exit 1; }
+	@echo "    OK: Edit event in context bundle with relative path"
+	@echo "==> Testing build-context-bundle.sh with Bash event..."
+	@echo '{"session_id":"test-session","tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
+	  | .claude/hooks/build-context-bundle.sh --type tool
+	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
+	 jq -e 'select(.op=="command")' "$$BUNDLE" >/dev/null \
+	   || { echo "FAIL: command entry not found in bundle"; exit 1; }
+	@echo "    OK: Bash command in context bundle"
 	@echo "==> Testing that hook-infrastructure commands are skipped..."
-	@echo '{"tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search --query x"}}' | .claude/hooks/persist-events.sh
-	@LINES=$$(wc -l < .claude-flow/learning/events.jsonl | tr -d ' '); \
-	 if [ "$$LINES" -ne 3 ]; then echo "FAIL: expected 3 lines, got $$LINES (hook command was not skipped)"; exit 1; fi
+	@echo '{"session_id":"test-session","tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search"}}' \
+	  | .claude/hooks/build-context-bundle.sh --type tool
+	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
+	 LINES=$$(wc -l < "$$BUNDLE" | tr -d ' '); \
+	 if [ "$$LINES" -ne 2 ]; then echo "FAIL: expected 2 lines, got $$LINES (hook command was not skipped)"; exit 1; fi
 	@echo "    OK: Hook-infrastructure command correctly skipped"
-	@echo "==> Testing import-events.sh (session-end import)..."
-	@.claude/hooks/import-events.sh 2>&1
-	@test ! -f .claude-flow/learning/events.jsonl || { echo "FAIL: events.jsonl should have been rotated"; exit 1; }
-	@ls .claude-flow/learning/events-*.jsonl.bak >/dev/null 2>&1 || { echo "FAIL: backup file not created"; exit 1; }
-	@echo "    OK: Events imported and log rotated"
-	@echo "==> Testing recall-memory.sh (memory retrieval on prompt)..."
+	@echo "==> Testing build-context-bundle.sh with prompt..."
+	@echo '{"session_id":"test-session","prompt":"How do I implement the OAuth connector?"}' \
+	  | .claude/hooks/build-context-bundle.sh --type prompt
+	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
+	 jq -e 'select(.op=="prompt")' "$$BUNDLE" >/dev/null \
+	   || { echo "FAIL: prompt entry not found in bundle"; exit 1; }
+	@echo "    OK: User prompt in context bundle"
+	@echo "==> Testing recall-memory.sh (memory + bundle recall)..."
 	@RECALL_OUT=$$(echo '{"prompt":"How do hooks persist data to the memory database?"}' | .claude/hooks/recall-memory.sh 2>/dev/null); \
-	 if echo "$$RECALL_OUT" | grep -q "Relevant memory"; then \
-	   echo "    OK: recall-memory.sh returned relevant results"; \
+	 if echo "$$RECALL_OUT" | grep -qi "memory\|context"; then \
+	   echo "    OK: recall-memory.sh returned results"; \
 	 else \
-	   echo "    WARN: recall-memory.sh returned no results (memory may be empty)"; \
+	   echo "    WARN: recall-memory.sh returned no results (expected on fresh DB)"; \
 	 fi
 	@SKIP_OUT=$$(echo '{"prompt":"hi"}' | .claude/hooks/recall-memory.sh 2>/dev/null); \
 	 if [ -z "$$SKIP_OUT" ]; then \
@@ -95,5 +110,8 @@ verify-hooks:
 	 else \
 	   echo "FAIL: Short prompt should produce no output"; exit 1; \
 	 fi
+	@echo "==> Cleaning up test artifacts..."
+	@rm -rf .claude-flow/learning/hook_logs/test-session
+	@rm -f .claude-flow/learning/context_bundles/*_test-session.jsonl
 	@echo ""
 	@echo "All checks passed."

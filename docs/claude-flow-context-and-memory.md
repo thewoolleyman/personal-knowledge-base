@@ -131,9 +131,9 @@ compaction.
 | `hooks post-edit` / `hooks post-task` | nowhere | "Automatic" but stubs |
 | `session-restore` (SessionStart) | reads from memory DB | Yes -- fires on new session |
 | `session-end` (SessionEnd) | writes session summary | Yes -- fires on session exit (after our fix) |
-| `persist-events.sh` (PostToolUse) | `.claude-flow/learning/events.jsonl` | Yes -- fires on Edit/Bash/Task (our workaround) |
-| `import-events.sh` (SessionEnd) | `.swarm/memory.db` | Yes -- batch-imports events at session end (our workaround) |
-| `recall-memory.sh` (UserPromptSubmit) | reads from memory DB | Yes -- searches memory on every user prompt (our workaround) |
+| `log-hook-event.sh` (Pre/PostToolUse, all events) | `.claude-flow/learning/hook_logs/{session}/{event}.jsonl` | Yes -- raw firehose, gitignored (our workaround) |
+| `build-context-bundle.sh` (PostToolUse, UserPromptSubmit) | `.claude-flow/learning/context_bundles/{DAY_HOUR}_{session}.jsonl` | Yes -- curated bundles, committed to git (our workaround) |
+| `recall-memory.sh` (UserPromptSubmit, PreToolUse:Task) | reads from memory DB + greps context bundles | Yes -- dual-strategy recall on every prompt (our workaround) |
 
 ## Local Workaround Plan
 
@@ -147,61 +147,73 @@ require explicit CLI calls. We need automatic persistence without:
 - Adding native dependencies (`better-sqlite3`)
 - Breaking when upstream eventually fixes this
 
-### Approach: JSONL Event Log + Batch Import + Automatic Recall
+### Approach: Two-Tier Logging + Git-Native Context Bundles + Automatic Recall
 
-A zero-dependency append log captures events at near-zero cost (~1ms per hook
-via bash+jq file append). At session end, a batch import writes accumulated
-events to the working `memory store` SQLite path. On each new user prompt,
-a recall hook searches the memory DB and injects relevant past context.
+Inspired by the [elite-context-engineering](https://github.com/ruvnet/elite-context-engineering)
+repo's Python hook scripts, this uses a two-tier architecture:
 
-**New files:**
+- **Tier 1 (raw firehose):** `log-hook-event.sh` logs every hook payload to
+  per-session, per-event JSONL files. Full observability for debugging. Gitignored.
+- **Tier 2 (curated signal):** `build-context-bundle.sh` extracts compact,
+  relevant fields (file paths, commands, prompts) into context bundles that are
+  committed to git and survive across clones.
+- **Read side:** `recall-memory.sh` uses two search strategies (semantic SQLite
+  search + keyword grep of context bundles) to inject relevant past context on
+  every user prompt.
 
-- `.claude/hooks/persist-events.sh` -- captures PostToolUse events to JSONL
-- `.claude/hooks/import-events.sh` -- batch-imports JSONL to `memory store`
-- `.claude/hooks/recall-memory.sh` -- searches memory on each user prompt,
-  injects relevant results into Claude's context via stdout
+**Hook files (all in `.claude/hooks/`):**
 
-**Modified files:**
-
-- `.claude/settings.json` -- additional PostToolUse hooks for persist-events.sh,
-  import step added to SessionEnd, recall-memory.sh added to UserPromptSubmit
-  and PreToolUse (Task matcher)
+| File | Purpose | Fires on |
+|------|---------|----------|
+| `log-hook-event.sh` | Tier 1: raw payload logging | All events (wildcard matcher) |
+| `build-context-bundle.sh` | Tier 2: curated context bundles | PostToolUse (Read/Write/Edit/Bash/Task), UserPromptSubmit |
+| `recall-memory.sh` | Read side: dual-strategy recall | UserPromptSubmit, PreToolUse (Task) |
+| `hook-bridge.sh` | Upstream bridge (unchanged) | Various pre/post events |
 
 **Data flow:**
 
 ```
-WRITE PATH (during session):
-  Edit/Bash/Task completes
-    -> Claude Code fires PostToolUse
-    -> hook-bridge.sh post-edit (existing, calls CLI stub -- does nothing)
-    -> persist-events.sh (appends to events.jsonl)
-       ... session continues ...
+TIER 1 — RAW LOGGING (every hook event):
+  Any hook fires (Pre/PostToolUse, UserPromptSubmit, etc.)
+    -> log-hook-event.sh appends full JSON payload
+    -> .claude-flow/learning/hook_logs/{session_id}/{HookName}.jsonl
+    -> Gitignored — debugging and observability only
 
-WRITE PATH (session end):
-  Session ends
-    -> import-events.sh reads events.jsonl
-    -> Calls `memory store` for session summary (namespace: sessions)
-    -> Calls `memory store` for per-file edit counts (namespace: edit-patterns)
-    -> events.jsonl rotated to .jsonl.bak
+TIER 2 — CURATED BUNDLES (during session):
+  PostToolUse fires for Read/Write/Edit/Bash/Task
+    -> build-context-bundle.sh extracts compact fields
+    -> Converts absolute paths to project-relative paths
+    -> Skips hook-infrastructure commands (npx @claude-flow, .claude/hooks/)
+    -> Appends to .claude-flow/learning/context_bundles/{DAY_HOUR}_{session_id}.jsonl
+    -> Committed to git — survives across clones
 
-READ PATH (next session or same session):
+  UserPromptSubmit fires
+    -> build-context-bundle.sh --type prompt
+    -> Records truncated prompt text to the same bundle file
+
+READ PATH (every user prompt):
   User types a prompt
     -> recall-memory.sh reads prompt from stdin JSON
-    -> Runs `memory search --query "<prompt>" --limit 5`
+    -> Strategy 1: Semantic search via `memory search` (if .swarm/memory.db exists)
+    -> Strategy 2: Keyword grep of context bundles (git-native fallback)
     -> Prints results to stdout
     -> Claude Code injects stdout into <system-reminder> tag
     -> Claude sees relevant past context before starting work
 
 READ PATH (agent spawn):
   Task agent is about to be spawned (PreToolUse)
-    -> recall-memory.sh searches memory for task-relevant context
+    -> recall-memory.sh searches for task-relevant context
     -> Results injected into Claude's context before agent starts
 ```
 
 **Why this approach:**
 
-- **Closed loop** -- data written at session end is automatically surfaced on
-  relevant future prompts, without relying on the AI to remember to check
+- **Git-native persistence** -- context bundles are committed to git, so context
+  survives across clones and machines without depending on a SQLite DB
+- **Closed loop** -- curated context is automatically surfaced on relevant
+  future prompts via grep fallback, even without a memory DB
+- **Two strategies** -- semantic search (if DB available) + keyword grep (always
+  available) means recall works on fresh clones and corrupt DBs
 - Zero overhead during editing (file append vs npx cold-start)
 - No native dependencies (pure bash + jq)
 - Doesn't modify hook-bridge.sh (upstream file)
@@ -225,8 +237,7 @@ Monitor these for resolution:
 **What it fixes**: Makes `hooksPostEdit`, `hooksPostTask`, `hooksPostCommand`
 call `storeEntry()` instead of returning stubs.
 **When merged**: Update CLI version, verify hooks write to `.swarm/memory.db`,
-then remove `persist-events.sh` and the extra PostToolUse hooks from
-settings.json.
+then follow the removal checklist below.
 
 ### Issue #967 -- MCP/CLI backend unification
 **Status**: Open, no maintainer response
@@ -249,19 +260,21 @@ repo's own use.
 
 1. [ ] PR #1059 merged and released
 2. [ ] Verify `npx @claude-flow/cli@latest hooks post-edit --file X --success true` writes to `.swarm/memory.db`
-3. [ ] Remove `.claude/hooks/persist-events.sh`
-4. [ ] Remove `.claude/hooks/import-events.sh`
+3. [ ] Remove `.claude/hooks/log-hook-event.sh`
+4. [ ] Remove `.claude/hooks/build-context-bundle.sh`
 5. [ ] Remove `.claude/hooks/recall-memory.sh` (only if upstream adds automatic context injection)
-6. [ ] Remove extra PostToolUse hook groups from `.claude/settings.json`
-7. [ ] Remove import-events call from SessionEnd hooks in settings.json
+6. [ ] Remove build-context-bundle.sh hook groups from PostToolUse and UserPromptSubmit in `.claude/settings.json`
+7. [ ] Remove log-hook-event.sh wildcard hooks from all event types in settings.json
 8. [ ] Remove recall-memory.sh from UserPromptSubmit and PreToolUse hooks in settings.json
    (only if upstream provides equivalent context injection)
 9. [ ] Verify `memory search` returns data written by hooks
+10. [ ] Decide whether to keep `.claude-flow/learning/context_bundles/` in git
+    (may still be useful as a git-native activity log even after upstream fixes)
 
-**Note:** `recall-memory.sh` may be worth keeping even after upstream fixes
-land, since it provides automatic context injection that the upstream hooks
-don't offer. The upstream pipeline writes data to the DB but doesn't
-automatically surface it on future prompts.
+**Note:** `recall-memory.sh` and `build-context-bundle.sh` may be worth keeping
+even after upstream fixes land. The upstream pipeline writes data to the DB but
+doesn't automatically surface it on future prompts. The context bundles provide
+a git-native fallback that works on fresh clones without any DB setup.
 
 ## Also Fixed Locally
 
@@ -281,132 +294,106 @@ automatically surface it on future prompts.
 
 ## Instructions for agents to implement these changes in their own claude-flow repo
 
-These steps reproduce the JSONL event-logging workaround in any project that
+These steps reproduce the two-tier logging workaround in any project that
 uses claude-flow V3 with Claude Code hooks. Prerequisites: `jq` installed,
 `npx @claude-flow/cli@latest` available.
 
-### 1. Create the event-capture hook
+### 1. Create the raw event logger (Tier 1)
 
-Create `.claude/hooks/persist-events.sh` (make it executable). This script:
+Create `.claude/hooks/log-hook-event.sh` (make it executable). This is the
+raw observability layer that logs every hook payload for debugging:
 
-- Reads Claude Code PostToolUse stdin JSON
-- Extracts `tool_name` and relevant fields from `tool_input`
-- Appends one JSONL line per event to `.claude-flow/learning/events.jsonl`
-- Skips hook-infrastructure commands (anything starting with
-  `npx @claude-flow`, `npx -y @claude-flow`, or `.claude/hooks/`)
+- Reads the full hook stdin JSON
+- Extracts `session_id` and `hook_event_name`
+- Appends the timestamped payload to
+  `.claude-flow/learning/hook_logs/{session_id}/{HookName}.jsonl`
+- Creates the session directory with `mkdir -p`
 
-Event format by tool type:
-
-| Tool | JSONL fields |
-|------|-------------|
-| `Write`, `Edit`, `MultiEdit` | `{"ts":"...","type":"edit","file":"<file_path>"}` |
-| `Task` | `{"ts":"...","type":"task","desc":"<description or prompt>","agent":"<subagent_type>"}` |
-| `Bash` | `{"ts":"...","type":"command","cmd":"<command>"}` |
+Output format (one line per event):
+```json
+{"ts":"2026-01-31T22:00:00Z","payload":{...full hook JSON...}}
+```
 
 Key implementation details:
 
-- Use `jq -r '.tool_name // empty'` to read stdin; exit early if empty
+- Use `jq -r '.session_id // "unknown"'` and `.hook_event_name // "Unknown"`
+- All errors exit silently (`set -euo pipefail`, `|| exit 0`)
+- Must be fast (<2ms) since it fires on every hook event via wildcard matcher
+
+### 2. Create the context bundle builder (Tier 2)
+
+Create `.claude/hooks/build-context-bundle.sh` (make it executable). This is
+the curated signal layer that extracts compact, meaningful fields:
+
+- Accepts `--type tool` (default) or `--type prompt` argument
+- For tool events: extracts operation type, file paths, commands, task descriptions
+- For prompt events: records truncated user prompt text
+- Converts absolute paths to project-relative paths
+- Skips hook-infrastructure commands (`npx @claude-flow*`, `.claude/hooks/*`)
+- Appends to `.claude-flow/learning/context_bundles/{DAY_HOUR}_{session_id}.jsonl`
+
+Bundle entry formats by operation:
+
+| Tool | Bundle entry |
+|------|-------------|
+| `Read` | `{"op":"read","file":"internal/server/server.go"}` |
+| `Write` | `{"op":"write","file":"internal/server/server.go"}` |
+| `Edit`, `MultiEdit` | `{"op":"edit","file":"internal/server/server.go"}` |
+| `Task` | `{"op":"task","desc":"Research X","agent":"researcher"}` |
+| `Bash` | `{"op":"command","cmd":"go test ./..."}` |
+| User prompt | `{"op":"prompt","text":"How do I implement OAuth?"}` |
+
+Key implementation details:
+
+- Use `$(pwd)` to compute project root for relative path conversion
 - For Task events, prefer `description` over `prompt`; truncate to 200 chars
 - Use `jq -Rs '.'` to safely escape strings for JSON embedding
-- Create the output directory with `mkdir -p` on every invocation
+- The `DAY_HOUR` prefix (e.g., `FRI_18`) groups activity by time window
+- Context bundles are committed to git (NOT gitignored)
 
-### 2. Create the session-end import hook
+### 3. Create the memory-recall hook (Read side)
 
-Create `.claude/hooks/import-events.sh` (make it executable). This script
-runs at SessionEnd and:
+Create `.claude/hooks/recall-memory.sh` (make it executable). This closes
+the loop by searching past context on every user prompt and injecting it:
 
-1. Exits early if `events.jsonl` doesn't exist or is empty
-2. Extracts unique edited files and counts edits per file
-3. Extracts unique task descriptions
-4. Counts command events
-5. Stores a session summary via:
-   ```
-   npx @claude-flow/cli@latest memory store \
-     --key "session-<timestamp>" \
-     --value "<summary>" \
-     --namespace sessions
-   ```
-6. Stores per-file edit counts via:
-   ```
-   npx @claude-flow/cli@latest memory store \
-     --key "file-<md5-of-path>" \
-     --value "<filepath> edited N times" \
-     --namespace edit-patterns
-   ```
-7. Rotates `events.jsonl` to `events-<timestamp>.jsonl.bak`
-8. Deletes backups beyond the 5 most recent
-
-### 3. Create the memory-recall hook
-
-Create `.claude/hooks/recall-memory.sh` (make it executable). This is the
-**read side** — it closes the loop by searching memory on every user prompt
-and injecting relevant past context. This script:
-
-- Reads the user's prompt from stdin JSON (`.prompt` field)
-- Skips prompts under 15 characters (not worth a search for "hi" or "yes")
+**Strategy 1: Semantic search via memory DB**
+- Checks if `.swarm/memory.db` exists and is non-empty
 - Runs `npx @claude-flow/cli@latest memory search --query "<prompt>" --limit 5`
-- Prints matching results to stdout
-- Claude Code injects hook stdout into `<system-reminder>` tags, so the
-  results become part of Claude's context for that turn
+- Counts data rows in CLI table output (rows starting with `|`, minus 1 for header)
+- Outputs results if any data rows exist
+
+**Strategy 2: Keyword grep of context bundles (git-native fallback)**
+- Extracts keywords (4+ chars) from the prompt
+- Builds an alternation pattern and greps all `.jsonl` files in `context_bundles/`
+- Returns up to 10 unique matching lines
+
+Both strategies run in sequence. Either, both, or neither may produce output.
 
 Key implementation details:
 
-- Check that `.swarm/memory.db` exists and is non-empty before calling npx
-- Truncate the search query to 200 chars
-- Count data rows in the CLI table output (rows starting with `|`, minus 1
-  for the header row) — only output if there are actual data rows
-- All errors are suppressed (`2>/dev/null`, `|| exit 0`) to avoid blocking
-  the user's prompt
+- Reads `.prompt` from stdin JSON; skips prompts under 15 characters
+- Truncates search query to 200 chars
+- All errors suppressed (`2>/dev/null`, `|| MATCHES=""`) — never blocks the prompt
+- Claude Code injects hook stdout into `<system-reminder>` tags
 
 ### 4. Add hooks to `.claude/settings.json`
 
-Add three **new** PostToolUse hook groups (do not modify existing ones):
+**PreToolUse hooks:**
 
+Add `log-hook-event.sh` as a wildcard matcher (fires on all tool uses):
 ```json
 {
-  "matcher": "^(Write|Edit|MultiEdit)$",
+  "matcher": "*",
   "hooks": [{
     "type": "command",
-    "command": ".claude/hooks/persist-events.sh",
-    "timeout": 2000,
-    "continueOnError": true
-  }]
-},
-{
-  "matcher": "^Bash$",
-  "hooks": [{
-    "type": "command",
-    "command": ".claude/hooks/persist-events.sh",
-    "timeout": 2000,
-    "continueOnError": true
-  }]
-},
-{
-  "matcher": "^Task$",
-  "hooks": [{
-    "type": "command",
-    "command": ".claude/hooks/persist-events.sh",
+    "command": ".claude/hooks/log-hook-event.sh",
     "timeout": 2000,
     "continueOnError": true
   }]
 }
 ```
 
-Add `recall-memory.sh` to `UserPromptSubmit` **before** the existing route
-hook (so memory context is injected before routing):
-
-```json
-{
-  "type": "command",
-  "command": ".claude/hooks/recall-memory.sh",
-  "timeout": 10000,
-  "continueOnError": true
-}
-```
-
-Optionally, add `recall-memory.sh` to `PreToolUse` with a `Task` matcher so
-agents get relevant memory context before they start:
-
+Add `recall-memory.sh` with a `Task` matcher (so agents get context):
 ```json
 {
   "matcher": "^Task$",
@@ -419,30 +406,85 @@ agents get relevant memory context before they start:
 }
 ```
 
-Add `import-events.sh` to `SessionEnd` **before** any existing session-end
-hooks (so events are imported before the session summary is generated):
+**PostToolUse hooks:**
 
+Add `build-context-bundle.sh` for file/command/task events:
+```json
+{
+  "matcher": "^(Read|Write|Edit|MultiEdit|Bash|Task)$",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/build-context-bundle.sh --type tool",
+    "timeout": 2000,
+    "continueOnError": true
+  }]
+}
+```
+
+Add `log-hook-event.sh` as a wildcard matcher:
+```json
+{
+  "matcher": "*",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/log-hook-event.sh",
+    "timeout": 2000,
+    "continueOnError": true
+  }]
+}
+```
+
+**UserPromptSubmit hooks:**
+
+Add `recall-memory.sh` **before** the route hook:
 ```json
 {
   "type": "command",
-  "command": ".claude/hooks/import-events.sh",
-  "timeout": 30000,
+  "command": ".claude/hooks/recall-memory.sh",
+  "timeout": 10000,
   "continueOnError": true
 }
 ```
 
+Add `build-context-bundle.sh` with `--type prompt`:
+```json
+{
+  "type": "command",
+  "command": ".claude/hooks/build-context-bundle.sh --type prompt",
+  "timeout": 2000,
+  "continueOnError": true
+}
+```
+
+Add `log-hook-event.sh`:
+```json
+{
+  "type": "command",
+  "command": ".claude/hooks/log-hook-event.sh",
+  "timeout": 2000,
+  "continueOnError": true
+}
+```
+
+**SessionStart, Stop, SessionEnd, Notification:**
+
+Add `log-hook-event.sh` to each of these event types with the same
+wildcard configuration shown above.
+
 ### 5. Update `.gitignore`
 
-Add these patterns to prevent committing ephemeral event logs:
-
+Add raw hook logs (large, per-session, debugging only):
 ```
-.claude-flow/learning/events.jsonl
-.claude-flow/learning/*.jsonl.bak
+.claude-flow/learning/hook_logs/
 ```
 
-### 6. Initialize the memory database
+Do **NOT** gitignore `context_bundles/` — these are the curated, compact
+bundles that should be committed to git for cross-clone persistence.
 
-The memory DB may need initialization (or re-initialization if corrupt):
+### 6. Optionally initialize the memory database
+
+The SQLite memory DB enhances recall but is not required (the grep fallback
+works without it):
 
 ```bash
 npx @claude-flow/cli@latest memory init --force --verbose
@@ -455,70 +497,75 @@ npx @claude-flow/cli@latest memory store --key "test" --value "hello" --namespac
 npx @claude-flow/cli@latest memory search --query "hello" --namespace test
 ```
 
-If search returns the entry, the DB is working.
+If search returns the entry, the DB is working. If the DB is missing or
+corrupt, the grep fallback in recall-memory.sh still provides context
+from committed context bundles.
 
 ### 7. Verify
 
-Add a Makefile target (or run manually) that exercises the full pipeline:
+Run `make verify-hooks` to exercise the full pipeline, or run the checks
+manually:
 
 ```bash
-# Clean slate
-rm -f .claude-flow/learning/events.jsonl
+# Test raw event logging (Tier 1)
+echo '{"session_id":"test","hook_event_name":"PostToolUse","tool_name":"Edit"}' \
+  | .claude/hooks/log-hook-event.sh
+cat .claude-flow/learning/hook_logs/test/PostToolUse.jsonl
+# expect: {"ts":"...","payload":{...}}
 
-# Simulate an Edit event
-echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test.go"}}' \
-  | .claude/hooks/persist-events.sh
+# Test context bundle for Edit event (Tier 2)
+echo '{"session_id":"test","tool_name":"Edit","tool_input":{"file_path":"'$(pwd)'/internal/server/server.go"}}' \
+  | .claude/hooks/build-context-bundle.sh --type tool
+# expect: {"op":"edit","file":"internal/server/server.go"} (relative path)
 
-# Simulate a Task event
-echo '{"tool_name":"Task","tool_input":{"description":"Test","subagent_type":"coder"}}' \
-  | .claude/hooks/persist-events.sh
+# Test context bundle for Bash command
+echo '{"session_id":"test","tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
+  | .claude/hooks/build-context-bundle.sh --type tool
+# expect: {"op":"command","cmd":"go test ./..."}
 
-# Simulate a Bash event
-echo '{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
-  | .claude/hooks/persist-events.sh
+# Test hook-infrastructure commands are skipped
+echo '{"session_id":"test","tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search"}}' \
+  | .claude/hooks/build-context-bundle.sh --type tool
+# expect: no new line added (skipped)
 
-# Confirm 3 lines (hook commands should be skipped)
-echo '{"tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search"}}' \
-  | .claude/hooks/persist-events.sh
-wc -l < .claude-flow/learning/events.jsonl  # expect: 3
+# Test user prompt capture
+echo '{"session_id":"test","prompt":"How do I implement OAuth?"}' \
+  | .claude/hooks/build-context-bundle.sh --type prompt
+# expect: {"op":"prompt","text":"How do I implement OAuth?"}
 
-# Run import
-.claude/hooks/import-events.sh
-
-# Confirm rotation
-ls .claude-flow/learning/events-*.jsonl.bak  # expect: one backup file
-test ! -f .claude-flow/learning/events.jsonl  # expect: original removed
-
-# Test recall-memory.sh returns relevant results
+# Test recall with grep fallback
 echo '{"prompt":"How do hooks persist data to the memory database?"}' \
-  | .claude/hooks/recall-memory.sh  # expect: "Relevant memory from past sessions"
+  | .claude/hooks/recall-memory.sh
+# expect: "Context from past sessions:" with matching bundle lines
 
-# Test short prompts are skipped (no npx cost)
+# Test short prompts are skipped
 OUTPUT=$(echo '{"prompt":"hi"}' | .claude/hooks/recall-memory.sh)
 test -z "$OUTPUT"  # expect: empty (skipped)
 ```
 
 ### Notes
 
-- `persist-events.sh` must be fast (<2ms) since it fires on every tool use.
-  File append with `printf >> file` is effectively free. Do not call `npx` or
-  any network operation from this hook.
-- `recall-memory.sh` calls `npx` (~200ms) on every user prompt. This is
-  acceptable because it runs once per user message (not per tool use), and
-  the latency is masked by the time the user spends reading the response.
-  Short prompts (<15 chars) are skipped to avoid unnecessary searches.
-- `import-events.sh` calls `npx` (with cold-start cost) but only runs once at
-  session end, so this is acceptable.
-- These hooks are additive -- they don't modify `hook-bridge.sh` or any
+- `log-hook-event.sh` and `build-context-bundle.sh` must be fast (<2ms)
+  since they fire on every tool use. File append with `printf >> file` is
+  effectively free. Neither calls `npx` or any network operation.
+- `recall-memory.sh` calls `npx` (~200ms) for Strategy 1, but only on
+  user prompts (not per tool use). Short prompts (<15 chars) are skipped.
+  Strategy 2 (grep) is nearly instant. Both are acceptable latency.
+- Context bundles are committed to git. They're compact (~50-100 bytes per
+  entry) and provide cross-clone persistence without any database setup.
+- Raw hook logs are gitignored. They contain full payloads and grow quickly.
+  Use them for debugging hook behavior, then delete when no longer needed.
+- These hooks are additive — they don't modify `hook-bridge.sh` or any
   upstream-generated files. They can be removed cleanly when upstream fixes
   land (see "Checklist for removing the workaround" above).
-- The memory DB (`.swarm/memory.db`) must be initialized before the recall
-  hook can return results. Run `memory init --force` if the DB is missing or
-  corrupt (the file header says SQLite but tables are missing).
+- The memory DB (`.swarm/memory.db`) is optional. If missing or corrupt,
+  recall-memory.sh falls back to grepping context bundles. Run
+  `memory init --force` to (re)create the DB if you want semantic search.
 
 ## References
 
 - [claude-flow repo](https://github.com/ruvnet/claude-flow)
+- [elite-context-engineering repo](https://github.com/ruvnet/elite-context-engineering) (inspired the two-tier hook architecture)
 - [Issue #1058 -- Hook stubs](https://github.com/ruvnet/claude-flow/issues/1058)
 - [PR #1059 -- Hook persistence fix](https://github.com/ruvnet/claude-flow/pulls/1059)
 - [Issue #967 -- Backend split](https://github.com/ruvnet/claude-flow/issues/967)

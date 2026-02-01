@@ -77,7 +77,7 @@ make vet           Run go vet
 make tidy          Tidy and verify go.mod
 make clean         Remove build artifacts
 make run           Build and run pkb --help
-make verify-hooks  Prove event-logging and memory-recall hooks work end-to-end
+make verify-hooks  Prove two-tier logging, context bundles, and recall work end-to-end
 ```
 
 ### CLI search
