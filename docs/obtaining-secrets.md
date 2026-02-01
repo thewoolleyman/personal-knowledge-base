@@ -4,7 +4,7 @@ When Claude discovers that a new credential is needed (or you know you need one)
 
 ## 1. Pour the formula to create a tracked bead
 
-The `mol-obtain-secret` formula creates a bead with step-by-step sub-tasks for obtaining any credential -- OAuth or plain token.
+The `mol-obtain-secret` formula creates a molecule (epic + step beads) for obtaining any credential -- OAuth or plain token.
 
 ```bash
 # Preview what the formula does
@@ -21,23 +21,28 @@ bd --no-daemon mol pour mol-obtain-secret \
   --var scopes="drive.readonly,gmail.readonly"
 ```
 
-## 2. Start a `claude --chrome` session and work the bead
+The pour output prints the root epic ID (e.g., `personal-knowledge-base-mol-6d8`). Note it for step 2.
+
+## 2. Start a `claude --chrome` session and work the molecule
+
+Molecule steps are hidden from plain `bd ready` -- use `--mol` to see them:
+
+```bash
+# Check which steps are ready (use the epic ID from step 1)
+bd --no-daemon ready --mol <epic-id>
+```
+
+Then start Claude with browser access:
 
 ```bash
 claude --chrome
 ```
 
-Then tell Claude:
+Paste this prompt (replace `<epic-id>` with the actual ID):
 
 ```
-Pour the mol-obtain-secret formula for Google OAuth, then walk me through
-the resulting bead. Reference: docs/obtaining-secrets.md
-```
-
-Or if you already poured in step 1:
-
-```
-Run bd ready, claim the secret-setup bead, and walk me through it.
+Run `bd --no-daemon ready --mol <epic-id>` to see the ready steps,
+then walk me through each one. Reference: docs/obtaining-secrets.md
 ```
 
 Claude will:
@@ -46,10 +51,11 @@ Claude will:
 3. See your browser (via `--chrome`) if you get stuck
 4. Ask you to paste credentials -- then write them to `.env` for you
 5. Run the auth flow and verify everything works
+6. Close each step bead as it completes
 
-## 3. Close the bead
+## 3. Close the molecule
 
-Once credentials are verified, Claude closes the bead. Run `bd sync` if not already synced.
+Once all steps are done, Claude closes the epic. Run `bd sync` if not already synced.
 
 ## Pour examples for common providers
 
