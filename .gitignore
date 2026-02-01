@@ -1,5 +1,6 @@
 tmp
 .env
+token.json
 data/
 cache/
 *.db

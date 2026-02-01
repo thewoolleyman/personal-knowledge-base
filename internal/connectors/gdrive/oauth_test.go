@@ -61,10 +61,10 @@ func TestSaveToken_FilePermissions(t *testing.T) {
 
 // BUG-002: SaveToken must surface errors from both Encode and Close.
 func TestSaveToken_BadDirectory(t *testing.T) {
-	// Writing to a non-existent directory should return an error.
+	// Writing to an unwritable path should return an error.
 	err := SaveToken("/nonexistent/dir/token.json", &oauth2.Token{AccessToken: "t"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "create token file")
+	assert.Contains(t, err.Error(), "create token directory")
 }
 
 func TestSaveToken_ClosesFileExplicitly(t *testing.T) {
@@ -96,6 +96,25 @@ func TestEncodeAndClose_CloseError(t *testing.T) {
 	err := encodeAndClose(wc, &oauth2.Token{AccessToken: "test"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "close failed")
+}
+
+func TestSaveToken_CreatesParentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "nested", "subdir", "token.json")
+
+	tok := &oauth2.Token{AccessToken: "nested-test", TokenType: "Bearer"}
+
+	err := SaveToken(nested, tok)
+	require.NoError(t, err)
+
+	loaded, err := LoadToken(nested)
+	require.NoError(t, err)
+	assert.Equal(t, "nested-test", loaded.AccessToken)
+
+	// Verify parent directory permissions are 0700 (owner-only).
+	info, err := os.Stat(filepath.Dir(nested))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
 }
 
 func TestSaveToken_ReadOnlyDir(t *testing.T) {

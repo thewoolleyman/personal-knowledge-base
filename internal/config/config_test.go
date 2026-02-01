@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +27,33 @@ func TestLoad_ReadsEnvVars(t *testing.T) {
 	assert.Equal(t, "test-secret", cfg.GoogleClientSecret)
 }
 
-func TestLoad_TokenPathDefault(t *testing.T) {
+func TestLoad_TokenPathDefault_UsesXDGConfigHome(t *testing.T) {
+	t.Setenv("PKB_TOKEN_PATH", "")
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/test-xdg-config")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join("/tmp/test-xdg-config", "pkb", "token.json"), cfg.TokenPath)
+}
+
+func TestLoad_TokenPathDefault_FallsBackToHomeConfig(t *testing.T) {
+	t.Setenv("PKB_TOKEN_PATH", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "/tmp/test-home")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join("/tmp/test-home", ".config", "pkb", "token.json"), cfg.TokenPath)
+}
+
+func TestLoad_TokenPathDefault_FallsBackToTokenJSON_WhenHomeDirFails(t *testing.T) {
+	t.Setenv("PKB_TOKEN_PATH", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	orig := userHomeDir
+	userHomeDir = func() (string, error) { return "", fmt.Errorf("no home") }
+	t.Cleanup(func() { userHomeDir = orig })
+
 	cfg, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, "token.json", cfg.TokenPath)

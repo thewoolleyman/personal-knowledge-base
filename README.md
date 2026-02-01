@@ -141,15 +141,16 @@ Expected: tells you exactly which environment variables to set, with copy-pastea
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project (or use existing)
-3. Enable the **Google Drive API**
+3. Enable the **Google Drive API** and **Gmail API**
 4. Create OAuth 2.0 credentials (Desktop application type)
-5. Download the credentials JSON
-6. Set environment variables:
+5. Set environment variables (see `.env.example` for reference):
 
 ```bash
 export PKB_GOOGLE_CLIENT_ID="your-client-id"
 export PKB_GOOGLE_CLIENT_SECRET="your-client-secret"
 ```
+
+**Tip:** Add these to `~/.zshrc` or `~/.bashrc` to persist across sessions.
 
 ### 5. Run integration tests against real Google Drive
 
@@ -196,7 +197,7 @@ All config is via environment variables:
 | `PKB_SERVER_ADDR` | `:8080` | HTTP server listen address |
 | `PKB_GOOGLE_CLIENT_ID` | (none) | Google OAuth client ID |
 | `PKB_GOOGLE_CLIENT_SECRET` | (none) | Google OAuth client secret |
-| `PKB_TOKEN_PATH` | `token.json` | Path to store OAuth token |
+| `PKB_TOKEN_PATH` | `~/.config/pkb/token.json` | Path to store OAuth token |
 
 ## License
 
