@@ -387,8 +387,7 @@ Add `log-hook-event.sh` as a wildcard matcher (fires on all tool uses):
   "hooks": [{
     "type": "command",
     "command": ".claude/hooks/log-hook-event.sh",
-    "timeout": 2000,
-    "continueOnError": true
+    "timeout": 2000
   }]
 }
 ```
@@ -400,8 +399,7 @@ Add `recall-memory.sh` with a `Task` matcher (so agents get context):
   "hooks": [{
     "type": "command",
     "command": ".claude/hooks/recall-memory.sh",
-    "timeout": 10000,
-    "continueOnError": true
+    "timeout": 10000
   }]
 }
 ```
@@ -415,8 +413,7 @@ Add `build-context-bundle.sh` for file/command/task events:
   "hooks": [{
     "type": "command",
     "command": ".claude/hooks/build-context-bundle.sh --type tool",
-    "timeout": 2000,
-    "continueOnError": true
+    "timeout": 2000
   }]
 }
 ```
@@ -428,8 +425,7 @@ Add `log-hook-event.sh` as a wildcard matcher:
   "hooks": [{
     "type": "command",
     "command": ".claude/hooks/log-hook-event.sh",
-    "timeout": 2000,
-    "continueOnError": true
+    "timeout": 2000
   }]
 }
 ```
@@ -441,8 +437,7 @@ Add `recall-memory.sh` **before** the route hook:
 {
   "type": "command",
   "command": ".claude/hooks/recall-memory.sh",
-  "timeout": 10000,
-  "continueOnError": true
+  "timeout": 10000
 }
 ```
 
@@ -451,8 +446,7 @@ Add `build-context-bundle.sh` with `--type prompt`:
 {
   "type": "command",
   "command": ".claude/hooks/build-context-bundle.sh --type prompt",
-  "timeout": 2000,
-  "continueOnError": true
+  "timeout": 2000
 }
 ```
 
@@ -461,8 +455,7 @@ Add `log-hook-event.sh`:
 {
   "type": "command",
   "command": ".claude/hooks/log-hook-event.sh",
-  "timeout": 2000,
-  "continueOnError": true
+  "timeout": 2000
 }
 ```
 
