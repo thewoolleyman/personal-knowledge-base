@@ -10,3 +10,6 @@ pkb
 .claude-flow/learning/context_bundles/
 .swarm/state.json
 .swarm/schema.sql
+
+# bv (beads viewer) local config and caches
+.bv/
