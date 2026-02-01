@@ -1,64 +1,60 @@
 # Obtaining and Configuring Secrets
 
-## Interactive Walkthrough (Recommended)
+When Claude discovers that a new credential is needed (or you know you need one), follow these steps.
 
-Start Claude Code with the `--chrome` flag so Claude can see your browser and guide you:
+## 1. Pour the formula to create a tracked bead
+
+The `mol-obtain-secret` formula creates a bead with step-by-step sub-tasks for obtaining any credential -- OAuth or plain token.
+
+```bash
+# Preview what the formula does
+bd cook mol-obtain-secret --dry-run
+
+# Pour it for your provider (see examples below)
+bd --no-daemon mol pour mol-obtain-secret \
+  --var provider=google \
+  --var service="Google Drive + Gmail" \
+  --var secret_type=oauth \
+  --var console_url="https://console.cloud.google.com/" \
+  --var apis="Google Drive API, Gmail API" \
+  --var env_vars="PKB_GOOGLE_CLIENT_ID,PKB_GOOGLE_CLIENT_SECRET" \
+  --var scopes="drive.readonly,gmail.readonly"
+```
+
+## 2. Start a `claude --chrome` session and work the bead
 
 ```bash
 claude --chrome
 ```
 
-Then tell Claude which secret you need:
+Then tell Claude:
 
 ```
-> Help me set up Google OAuth credentials for pkb
-> Help me add Slack credentials to pkb
-> Walk me through obtaining the GitHub token for pkb
+Pour the mol-obtain-secret formula for Google OAuth, then walk me through
+the resulting bead. Reference: docs/obtaining-secrets.md
+```
+
+Or if you already poured in step 1:
+
+```
+Run bd ready, claim the secret-setup bead, and walk me through it.
 ```
 
 Claude will:
 1. Open each URL in your browser
 2. Tell you exactly what to click and fill in
-3. See your browser (via `--chrome`) if you get stuck and need help
+3. See your browser (via `--chrome`) if you get stuck
 4. Ask you to paste credentials -- then write them to `.env` for you
 5. Run the auth flow and verify everything works
 
-You never need to read this doc end-to-end. Just start `claude --chrome` and ask.
+## 3. Close the bead
 
-## Quick Reference (for when you already know the steps)
+Once credentials are verified, Claude closes the bead. Run `bd sync` if not already synced.
 
-```bash
-cat .env.example                                    # see what vars are needed
-cp .env.example .env                                # copy template
-# fill in values, then:
-source .env && export PKB_GOOGLE_CLIENT_ID PKB_GOOGLE_CLIENT_SECRET
-make build && ./pkb auth                            # authenticate
-./pkb search "test query"                           # verify
-```
-
-## How the Formula System Works
-
-Credential setup is backed by a reusable beads formula: `.beads/formulas/mol-obtain-secret.formula.json`. This formula handles both OAuth flows (client ID + secret + consent screen) and plain API tokens.
-
-### The workflow
-
-1. **Pour the formula** to create a tracked bead with sub-steps for the specific provider
-2. **Start `claude --chrome`** and tell Claude to work on that bead
-3. **Claude follows the formula steps**, guiding you through the provider's console
-4. **Close the bead** when credentials are verified
-
-### Pouring the formula for a new secret
-
-Preview the formula first:
+## Pour examples for common providers
 
 ```bash
-bd cook mol-obtain-secret --dry-run
-```
-
-Then pour it with the variables for your provider:
-
-```bash
-# OAuth example: Google (client ID + client secret + consent screen)
+# OAuth: Google (client ID + client secret + consent screen)
 bd --no-daemon mol pour mol-obtain-secret \
   --var provider=google \
   --var service="Google Drive + Gmail" \
@@ -68,16 +64,15 @@ bd --no-daemon mol pour mol-obtain-secret \
   --var env_vars="PKB_GOOGLE_CLIENT_ID,PKB_GOOGLE_CLIENT_SECRET" \
   --var scopes="drive.readonly,gmail.readonly"
 
-# Token example: GitHub (single personal access token)
+# Token: GitHub (single personal access token)
 bd --no-daemon mol pour mol-obtain-secret \
   --var provider=github \
   --var service="GitHub" \
   --var secret_type=token \
   --var console_url="https://github.com/settings/tokens" \
-  --var env_vars="PKB_GITHUB_TOKEN" \
-  --var verify_command="./pkb search 'test'"
+  --var env_vars="PKB_GITHUB_TOKEN"
 
-# OAuth example: Slack (web app with client ID + secret)
+# OAuth: Slack (web app with client ID + secret)
 bd --no-daemon mol pour mol-obtain-secret \
   --var provider=slack \
   --var service="Slack" \
@@ -89,9 +84,7 @@ bd --no-daemon mol pour mol-obtain-secret \
   --var app_type=web
 ```
 
-After pouring, run `bd ready` to see the new bead, then start `claude --chrome` and work through it.
-
-### Formula variables reference
+## Formula variables reference
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -105,67 +98,27 @@ After pouring, run `bd ready` to see the new bead, then start `claude --chrome` 
 | `app_type` | no | `desktop` | OAuth app type (ignored for token type) |
 | `verify_command` | no | `./pkb search 'test'` | Command to verify credentials work |
 
-## Google OAuth Credentials (Manual Reference)
-
-These are the steps Claude walks you through interactively. Listed here for reference only.
-
-### 1. Open Google Cloud Console
+## Quick reference (for when you already know the steps)
 
 ```bash
-open "https://console.cloud.google.com/"
-```
-
-Sign in. Create a new project or select existing.
-
-### 2. Enable APIs
-
-```bash
-open "https://console.cloud.google.com/apis/library"
-```
-
-Search and enable: **Google Drive API** and **Gmail API**.
-
-### 3. Configure OAuth Consent Screen
-
-```bash
-open "https://console.cloud.google.com/apis/credentials/consent"
-```
-
-- User type: **External**
-- App name: anything (e.g., "pkb")
-- User support email: your email
-- Developer email: your email
-- Scopes: add `drive.readonly` and `gmail.readonly`
-- Test users: **add your own Google email** (required while app is in "Testing" mode)
-
-### 4. Create Credentials
-
-```bash
-open "https://console.cloud.google.com/apis/credentials"
-```
-
-- **Create Credentials > OAuth client ID**
-- Application type: **Desktop app**
-- Name: anything (e.g., "pkb-local")
-- **Copy** the Client ID and Client Secret
-
-### 5. Configure Locally
-
-Claude writes these to `.env` for you during the interactive flow. If doing it manually:
-
-```bash
-cp .env.example .env
-# paste your Client ID and Client Secret into .env
-```
-
-### 6. Authenticate and Test
-
-```bash
+cat .env.example                                    # see what vars are needed
+cp .env.example .env                                # copy template
+# fill in values, then:
 source .env && export PKB_GOOGLE_CLIENT_ID PKB_GOOGLE_CLIENT_SECRET
-make build
-./pkb auth          # opens browser for OAuth consent
-./pkb search "test" # verify
+make build && ./pkb auth                            # authenticate
+./pkb search "test query"                           # verify
 ```
+
+## Google OAuth manual steps (reference only)
+
+These are the steps Claude walks you through. Listed here so you can do it without Claude if needed.
+
+1. **Open Google Cloud Console** -- https://console.cloud.google.com/ -- sign in, create/select a project
+2. **Enable APIs** -- https://console.cloud.google.com/apis/library -- enable Google Drive API and Gmail API
+3. **Configure OAuth Consent Screen** -- https://console.cloud.google.com/apis/credentials/consent -- External user type, app name, emails, scopes (`drive.readonly`, `gmail.readonly`), add yourself as test user
+4. **Create Credentials** -- https://console.cloud.google.com/apis/credentials -- Create Credentials > OAuth client ID > Desktop app, copy Client ID and Client Secret
+5. **Configure locally** -- `cp .env.example .env`, paste credentials
+6. **Authenticate and test** -- `source .env && export PKB_GOOGLE_CLIENT_ID PKB_GOOGLE_CLIENT_SECRET && make build && ./pkb auth && ./pkb search "test"`
 
 Token is saved to `~/.config/pkb/token.json`.
 
