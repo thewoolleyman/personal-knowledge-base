@@ -18,7 +18,12 @@ mkdir -p "$LOG_DIR"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Append full payload as a single JSONL line
-printf '{"ts":"%s","payload":%s}\n' "$TS" "$INPUT" >> "${LOG_DIR}/${HOOK_NAME}.jsonl"
+# Append full payload as a single JSONL line (flock for atomic writes)
+(
+  flock 200
+  jq -cn --arg ts "$TS" --argjson payload "$INPUT" \
+    '{"ts": $ts, "payload": $payload}' \
+    >> "${LOG_DIR}/${HOOK_NAME}.jsonl" 2>/dev/null || true
+) 200>"${LOG_DIR}/${HOOK_NAME}.jsonl.lock"
 
 exit 0

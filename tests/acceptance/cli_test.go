@@ -76,6 +76,24 @@ func TestAcceptance_HelpShowsSearchCommand(t *testing.T) {
 	assert.Contains(t, stdout, "Personal Knowledge Base")
 }
 
+func TestAcceptance_ServeHelp(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "serve", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "serve")
+}
+
+func TestAcceptance_InteractiveHelp(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "interactive", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "interactive")
+}
+
 func TestAcceptance_SearchHelp(t *testing.T) {
 	binary := buildBinary(t)
 

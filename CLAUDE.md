@@ -261,12 +261,10 @@ Bash("npx @claude-flow/cli@latest hooks worker dispatch --trigger optimize")
 ### 📁 File Organization Rules
 
 **NEVER save to root folder. Use these directories:**
-- `/src` - Source code files
-- `/tests` - Test files
-- `/docs` - Documentation and markdown files
-- `/config` - Configuration files
-- `/scripts` - Utility scripts
-- `/examples` - Example code
+- `cmd/pkb` - CLI entry point
+- `internal/` - Internal packages (config, connectors, search, server, tui)
+- `tests/acceptance/` - Acceptance tests
+- `docs/` - Documentation
 
 ## Project Config (Anti-Drift Defaults)
 

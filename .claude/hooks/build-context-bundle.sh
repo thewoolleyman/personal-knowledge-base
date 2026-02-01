@@ -13,7 +13,7 @@ TYPE="tool"
 while [ $# -gt 0 ]; do
   case "$1" in
     --type) TYPE="$2"; shift 2 ;;
-    *) shift ;;
+    *) echo "Warning: unknown argument '$1'" >&2; shift ;;
   esac
 done
 

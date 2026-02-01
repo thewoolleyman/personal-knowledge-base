@@ -25,9 +25,9 @@ FOUND=""
 # ── Strategy 1: Semantic search via memory DB ──────────────────────
 DB=".swarm/memory.db"
 if [ -f "$DB" ] && [ -s "$DB" ]; then
-  RESULTS="$(npx @claude-flow/cli@latest memory search --query "$QUERY" --limit 5 2>/dev/null)" || RESULTS=""
+  RESULTS="$(npx @claude-flow/cli@latest memory search --query="$QUERY" --limit=5 2>/dev/null)" || RESULTS=""
   if printf '%s' "$RESULTS" | grep -q '|.*|.*|.*|'; then
-    ROW_COUNT="$(printf '%s' "$RESULTS" | grep -c '^|' || true)"
+    ROW_COUNT="$(printf '%s' "$RESULTS" | grep '^|' | grep -vc '^|[-+ ]*|$' || true)"
     DATA_ROWS=$(( ROW_COUNT - 1 ))
     if [ "$DATA_ROWS" -gt 0 ]; then
       echo ""
@@ -47,7 +47,7 @@ if [ -d "$BUNDLE_DIR" ]; then
   if [ -n "$KEYWORDS" ]; then
     # Build a grep pattern matching any keyword
     PATTERN="$(printf '%s' "$KEYWORDS" | paste -sd'|' -)"
-    MATCHES="$(grep -rhi "$PATTERN" "$BUNDLE_DIR"/*.jsonl 2>/dev/null | sort -u | tail -10)" || MATCHES=""
+    MATCHES="$(grep -hi "$PATTERN" "$BUNDLE_DIR"/*.jsonl 2>/dev/null | sort -u | tail -10)" || MATCHES=""
     if [ -n "$MATCHES" ]; then
       echo ""
       echo "Context from past sessions:"

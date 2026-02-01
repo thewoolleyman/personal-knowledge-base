@@ -27,7 +27,7 @@ Drive  API   API   API
 
 | Package | Purpose |
 |---------|---------|
-| `cmd/pkb` | CLI entry point (Cobra) with `search` command |
+| `cmd/pkb` | CLI entry point (Cobra) with `search`, `serve`, and `interactive` (alias `tui`) commands |
 | `internal/server` | HTTP API server with `/health` endpoint |
 | `internal/search` | Search engine — fans out queries to connectors concurrently |
 | `internal/connectors` | `Connector` interface that each data source implements |
@@ -88,6 +88,24 @@ make build
 ./pkb search "meeting notes"
 ```
 
+### HTTP API server
+
+```bash
+make build
+./pkb serve              # listens on :8080 by default
+./pkb serve --addr :3000 # custom port
+```
+
+Endpoints:
+- `GET /health` -- returns 200 OK
+
+### Interactive TUI
+
+```bash
+make build
+./pkb interactive   # or: ./pkb tui
+```
+
 ## Exploratory testing and acceptance for humans
 
 These steps verify things work from a user's perspective. They mirror the automated acceptance tests in `tests/acceptance/`.
@@ -108,7 +126,7 @@ Expected: all pass, no race conditions detected.
 make run             # builds and runs ./pkb --help
 ```
 
-Expected: prints help text with `search` subcommand listed.
+Expected: prints help text with `search`, `serve`, and `interactive` subcommands listed.
 
 ### 3. Try the search command (without credentials)
 
@@ -153,8 +171,8 @@ tail -20 ~/.local/log/rsync-obsidian.log
 
 # Dry-run to see what would sync
 rsync -avn --delete \
-  "/Users/cwoolley/-Obsidian-Default-Vault/" \
-  "/Users/cwoolley/Library/CloudStorage/GoogleDrive-thewoolleyman@gmail.com/My Drive/Personal_Knowledge_Base_Mirrors/Obsidian_Default_Vault/"
+  "/Users/<your-username>/-Obsidian-Default-Vault/" \
+  "/Users/<your-username>/Library/CloudStorage/GoogleDrive-<your-email>/My Drive/Personal_Knowledge_Base_Mirrors/Obsidian_Default_Vault/"
 ```
 
 Expected: launch agent is active, logs show recent successful syncs, dry-run shows no pending changes (already in sync).

@@ -22,45 +22,45 @@ case "$MODE" in
   pre-edit)
     FILE=$(jf '.tool_input.file_path')
     [ -z "$FILE" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-edit --file "$FILE"
+    exec npx @claude-flow/cli@latest hooks pre-edit --file="$FILE"
     ;;
 
   pre-command)
     CMD=$(jf '.tool_input.command')
     [ -z "$CMD" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-command --command "$CMD"
+    exec npx @claude-flow/cli@latest hooks pre-command --command="$CMD"
     ;;
 
   pre-task)
     DESC=$(jf '.tool_input.prompt // .tool_input.description')
     [ -z "$DESC" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-task --description "$DESC"
+    exec npx @claude-flow/cli@latest hooks pre-task --description="$DESC"
     ;;
 
   # ── PostToolUse hooks ─────────────────────────────────────
   post-edit)
     FILE=$(jf '.tool_input.file_path')
     [ -z "$FILE" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks post-edit --file "$FILE" --success true
+    exec npx @claude-flow/cli@latest hooks post-edit --file="$FILE" --success=true
     ;;
 
   post-command)
     CMD=$(jf '.tool_input.command')
     [ -z "$CMD" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks post-command --command "$CMD" --success true
+    exec npx @claude-flow/cli@latest hooks post-command --command="$CMD" --success=true
     ;;
 
   post-task)
     AGENT_ID=$(jf '.tool_input.description // .tool_input.prompt')
     [ -z "$AGENT_ID" ] && AGENT_ID="unknown"
-    exec npx @claude-flow/cli@latest hooks post-task --task-id "$AGENT_ID" --success true
+    exec npx @claude-flow/cli@latest hooks post-task --task-id="$AGENT_ID" --success=true
     ;;
 
   # ── UserPromptSubmit ──────────────────────────────────────
   route)
     PROMPT=$(jf '.prompt')
     [ -z "$PROMPT" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks route --task "$PROMPT"
+    exec npx @claude-flow/cli@latest hooks route --task="$PROMPT"
     ;;
 
   # ── SessionStart ──────────────────────────────────────────
@@ -71,7 +71,7 @@ case "$MODE" in
   session-restore)
     SID=$(jf '.session_id')
     if [ -n "$SID" ]; then
-      exec npx @claude-flow/cli@latest hooks session-restore --session-id "$SID"
+      exec npx @claude-flow/cli@latest hooks session-restore --session-id="$SID"
     else
       exec npx @claude-flow/cli@latest hooks session-restore --latest
     fi
@@ -95,16 +95,16 @@ case "$MODE" in
   # ── SessionEnd ──────────────────────────────────────────────
   session-end)
     npx @claude-flow/cli@latest hooks session-end \
-      --generate-summary true \
-      --persist-state true \
-      --export-metrics true 2>/dev/null || true
+      --generate-summary=true \
+      --persist-state=true \
+      --export-metrics=true 2>/dev/null || true
     ;;
 
   # ── Notification ──────────────────────────────────────────
   notify)
     MSG=$(jf '.message // .notification_message // .content')
     [ -z "$MSG" ] && exit 0
-    exec npx @claude-flow/cli@latest memory store --namespace notifications --key "notify" --value "$MSG"
+    exec npx @claude-flow/cli@latest memory store --namespace=notifications --key="notify" --value="$MSG"
     ;;
 
   *)
