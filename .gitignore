@@ -4,3 +4,5 @@ data/
 cache/
 *.db
 pkb
+.claude-flow/learning/events.jsonl
+.claude-flow/learning/*.jsonl.bak

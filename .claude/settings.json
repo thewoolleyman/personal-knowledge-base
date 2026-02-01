@@ -68,6 +68,39 @@
             "continueOnError": true
           }
         ]
+      },
+      {
+        "matcher": "^(Write|Edit|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/persist-events.sh",
+            "timeout": 2000,
+            "continueOnError": true
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/persist-events.sh",
+            "timeout": 2000,
+            "continueOnError": true
+          }
+        ]
+      },
+      {
+        "matcher": "^Task$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/persist-events.sh",
+            "timeout": 2000,
+            "continueOnError": true
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -115,6 +148,12 @@
     "SessionEnd": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/import-events.sh",
+            "timeout": 30000,
+            "continueOnError": true
+          },
           {
             "type": "command",
             "command": ".claude/hooks/hook-bridge.sh session-end",

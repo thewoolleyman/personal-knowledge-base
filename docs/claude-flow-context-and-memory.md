@@ -248,6 +248,162 @@ repo's own use.
 
 **hook-bridge.sh**: Added `session-end` case.
 
+## Instructions for agents to implement these changes in their own claude-flow repo
+
+These steps reproduce the JSONL event-logging workaround in any project that
+uses claude-flow V3 with Claude Code hooks. Prerequisites: `jq` installed,
+`npx @claude-flow/cli@latest` available.
+
+### 1. Create the event-capture hook
+
+Create `.claude/hooks/persist-events.sh` (make it executable). This script:
+
+- Reads Claude Code PostToolUse stdin JSON
+- Extracts `tool_name` and relevant fields from `tool_input`
+- Appends one JSONL line per event to `.claude-flow/learning/events.jsonl`
+- Skips hook-infrastructure commands (anything starting with
+  `npx @claude-flow`, `npx -y @claude-flow`, or `.claude/hooks/`)
+
+Event format by tool type:
+
+| Tool | JSONL fields |
+|------|-------------|
+| `Write`, `Edit`, `MultiEdit` | `{"ts":"...","type":"edit","file":"<file_path>"}` |
+| `Task` | `{"ts":"...","type":"task","desc":"<description or prompt>","agent":"<subagent_type>"}` |
+| `Bash` | `{"ts":"...","type":"command","cmd":"<command>"}` |
+
+Key implementation details:
+
+- Use `jq -r '.tool_name // empty'` to read stdin; exit early if empty
+- For Task events, prefer `description` over `prompt`; truncate to 200 chars
+- Use `jq -Rs '.'` to safely escape strings for JSON embedding
+- Create the output directory with `mkdir -p` on every invocation
+
+### 2. Create the session-end import hook
+
+Create `.claude/hooks/import-events.sh` (make it executable). This script
+runs at SessionEnd and:
+
+1. Exits early if `events.jsonl` doesn't exist or is empty
+2. Extracts unique edited files and counts edits per file
+3. Extracts unique task descriptions
+4. Counts command events
+5. Stores a session summary via:
+   ```
+   npx @claude-flow/cli@latest memory store \
+     --key "session-<timestamp>" \
+     --value "<summary>" \
+     --namespace sessions
+   ```
+6. Stores per-file edit counts via:
+   ```
+   npx @claude-flow/cli@latest memory store \
+     --key "file-<md5-of-path>" \
+     --value "<filepath> edited N times" \
+     --namespace edit-patterns
+   ```
+7. Rotates `events.jsonl` to `events-<timestamp>.jsonl.bak`
+8. Deletes backups beyond the 5 most recent
+
+### 3. Add hooks to `.claude/settings.json`
+
+Add three **new** PostToolUse hook groups (do not modify existing ones):
+
+```json
+{
+  "matcher": "^(Write|Edit|MultiEdit)$",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/persist-events.sh",
+    "timeout": 2000,
+    "continueOnError": true
+  }]
+},
+{
+  "matcher": "^Bash$",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/persist-events.sh",
+    "timeout": 2000,
+    "continueOnError": true
+  }]
+},
+{
+  "matcher": "^Task$",
+  "hooks": [{
+    "type": "command",
+    "command": ".claude/hooks/persist-events.sh",
+    "timeout": 2000,
+    "continueOnError": true
+  }]
+}
+```
+
+Add `import-events.sh` to `SessionEnd` **before** any existing session-end
+hooks (so events are imported before the session summary is generated):
+
+```json
+{
+  "type": "command",
+  "command": ".claude/hooks/import-events.sh",
+  "timeout": 30000,
+  "continueOnError": true
+}
+```
+
+### 4. Update `.gitignore`
+
+Add these patterns to prevent committing ephemeral event logs:
+
+```
+.claude-flow/learning/events.jsonl
+.claude-flow/learning/*.jsonl.bak
+```
+
+### 5. Verify
+
+Add a Makefile target (or run manually) that exercises the full pipeline:
+
+```bash
+# Clean slate
+rm -f .claude-flow/learning/events.jsonl
+
+# Simulate an Edit event
+echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test.go"}}' \
+  | .claude/hooks/persist-events.sh
+
+# Simulate a Task event
+echo '{"tool_name":"Task","tool_input":{"description":"Test","subagent_type":"coder"}}' \
+  | .claude/hooks/persist-events.sh
+
+# Simulate a Bash event
+echo '{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
+  | .claude/hooks/persist-events.sh
+
+# Confirm 3 lines (hook commands should be skipped)
+echo '{"tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search"}}' \
+  | .claude/hooks/persist-events.sh
+wc -l < .claude-flow/learning/events.jsonl  # expect: 3
+
+# Run import
+.claude/hooks/import-events.sh
+
+# Confirm rotation
+ls .claude-flow/learning/events-*.jsonl.bak  # expect: one backup file
+test ! -f .claude-flow/learning/events.jsonl  # expect: original removed
+```
+
+### Notes
+
+- `persist-events.sh` must be fast (<2ms) since it fires on every tool use.
+  File append with `printf >> file` is effectively free. Do not call `npx` or
+  any network operation from this hook.
+- `import-events.sh` calls `npx` (with cold-start cost) but only runs once at
+  session end, so this is acceptable.
+- These hooks are additive -- they don't modify `hook-bridge.sh` or any
+  upstream-generated files. They can be removed cleanly when upstream fixes
+  land (see "Checklist for removing the workaround" above).
+
 ## References
 
 - [claude-flow repo](https://github.com/ruvnet/claude-flow)
