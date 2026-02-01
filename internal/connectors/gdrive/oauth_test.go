@@ -38,7 +38,7 @@ func TestLoadToken_FileNotFound(t *testing.T) {
 func TestLoadToken_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
-	os.WriteFile(path, []byte("{truncated"), 0600)
+	require.NoError(t, os.WriteFile(path, []byte("{truncated"), 0600))
 	_, err := LoadToken(path)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "decode token")
@@ -85,7 +85,7 @@ func TestSaveToken_ReadOnlyDir(t *testing.T) {
 	dir := t.TempDir()
 	readOnlyDir := filepath.Join(dir, "readonly")
 	require.NoError(t, os.Mkdir(readOnlyDir, 0500))
-	t.Cleanup(func() { os.Chmod(readOnlyDir, 0700) })
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
 
 	path := filepath.Join(readOnlyDir, "token.json")
 	err := SaveToken(path, &oauth2.Token{AccessToken: "t"})
