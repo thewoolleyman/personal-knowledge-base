@@ -829,3 +829,11 @@ Example spawn message:
 - 👀 Reviewer: [task]
 Working in parallel - I'll synthesize when they complete."
 ```
+
+<!-- bv-agent-instructions-v1 -->
+
+## Beads Viewer
+
+This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) (`bv`) for issue tracking. Issues are stored in `.beads/` and tracked in git. The `bv` command launches a TUI viewer (avoid in automated sessions); use `bd` subcommands for CLI access. Full `bd` command reference and workflow are provided by the startup hook.
+
+<!-- end-bv-agent-instructions -->
