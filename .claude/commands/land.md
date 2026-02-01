@@ -30,7 +30,13 @@ Stage all modified and untracked files. Use `git add` with specific file paths -
 
 If you find files that should be excluded, mention them in your summary.
 
-### 3. Commit
+### 3. Sync beads issue state
+
+Run `bd sync` to commit beads issue changes to git. This ensures any issue updates from this session (status changes, new issues, closed issues) are captured before the final push.
+
+If `bd` is not installed or `.beads/` doesn't exist, skip this step silently.
+
+### 4. Commit
 
 Create a single commit with a clear, descriptive message summarizing ALL the work done in this session. Look at the diff and recent conversation context to write a meaningful message -- not a generic "checkpoint" or "wip".
 
@@ -43,7 +49,7 @@ Format:
 Co-Authored-By: claude-flow <ruv@ruv.net>
 ```
 
-### 4. Push -- NON-NEGOTIABLE
+### 5. Push -- NON-NEGOTIABLE
 
 Pull with rebase first, then push to the remote tracking branch:
 
@@ -54,7 +60,7 @@ git push
 
 If the push fails, resolve the issue and retry. Do NOT force push. If it cannot be resolved, report the specific error.
 
-### 5. Clean up git state
+### 6. Clean up git state
 
 ```
 git stash list
@@ -62,7 +68,7 @@ git stash list
 
 If there are stale stashes, note them in the summary (do not drop them without being asked).
 
-### 6. Confirm clean state
+### 7. Confirm clean state
 
 Run `git status` one final time. Report:
 
