@@ -90,6 +90,23 @@ case "$TOOL_NAME" in
     case "$CMD" in
       npx\ @claude-flow*|npx\ -y\ @claude-flow*|.claude/hooks/*) exit 0 ;;
     esac
+    # Redact inline secrets before truncation (same patterns as log-hook-event.sh)
+    # NOTE: Uses only POSIX BRE for macOS BSD sed compatibility.
+    CMD="$(printf '%s' "$CMD" | sed \
+      -e 's/sk-ant-[a-zA-Z0-9_-]\{10,\}/[REDACTED]/g' \
+      -e 's/sk-[a-zA-Z0-9]\{20,\}/[REDACTED]/g' \
+      -e 's/AKIA[0-9A-Z]\{16\}/[REDACTED]/g' \
+      -e 's/ghp_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
+      -e 's/gho_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
+      -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[REDACTED]/g' \
+      -e 's/Bearer [a-zA-Z0-9._-]\{20,\}/Bearer [REDACTED]/g' \
+      -e 's/ya29\.[a-zA-Z0-9._-]\{1,\}/[REDACTED]/g' \
+      -e 's/SECRET[=:][^ "\\]*/SECRET=[REDACTED]/g' \
+      -e 's/TOKEN[=:][^ "\\]*/TOKEN=[REDACTED]/g' \
+      -e 's/KEY[=:][^ "\\]*/KEY=[REDACTED]/g' \
+      -e 's/PASSWORD[=:][^ "\\]*/PASSWORD=[REDACTED]/g' \
+      -e 's/CREDENTIAL[=:][^ "\\]*/CREDENTIAL=[REDACTED]/g' \
+    )"
     CMD_SHORT="$(printf '%s' "$CMD" | head -c 200 | jq -Rs '.')"
     printf '{"op":"command","cmd":%s}\n' "$CMD_SHORT" >> "$BUNDLE_FILE"
     ;;

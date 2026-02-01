@@ -18,6 +18,28 @@ mkdir -p "$LOG_DIR"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# Redact secrets from tool_response stdout/stderr before logging.
+# Single sed pipeline — best-effort, runs once on the full JSON string.
+# We leave tool_input.command intact so we can see what command ran;
+# secrets only leak through stdout/stderr in tool_response.
+# NOTE: Uses only POSIX BRE features for macOS BSD sed compatibility
+#       (no \| alternation, no I flag — separate -e per keyword instead).
+INPUT="$(printf '%s' "$INPUT" | sed \
+  -e 's/sk-ant-[a-zA-Z0-9_-]\{10,\}/[REDACTED]/g' \
+  -e 's/sk-[a-zA-Z0-9]\{20,\}/[REDACTED]/g' \
+  -e 's/AKIA[0-9A-Z]\{16\}/[REDACTED]/g' \
+  -e 's/ghp_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
+  -e 's/gho_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
+  -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[REDACTED]/g' \
+  -e 's/Bearer [a-zA-Z0-9._-]\{20,\}/Bearer [REDACTED]/g' \
+  -e 's/ya29\.[a-zA-Z0-9._-]\{1,\}/[REDACTED]/g' \
+  -e 's/SECRET[=:][^ "\\]*/SECRET=[REDACTED]/g' \
+  -e 's/TOKEN[=:][^ "\\]*/TOKEN=[REDACTED]/g' \
+  -e 's/KEY[=:][^ "\\]*/KEY=[REDACTED]/g' \
+  -e 's/PASSWORD[=:][^ "\\]*/PASSWORD=[REDACTED]/g' \
+  -e 's/CREDENTIAL[=:][^ "\\]*/CREDENTIAL=[REDACTED]/g' \
+)"
+
 # Append full payload as a single JSONL line with portable locking
 LOCKFILE="${LOG_DIR}/${HOOK_NAME}.jsonl.lock"
 LOGFILE="${LOG_DIR}/${HOOK_NAME}.jsonl"

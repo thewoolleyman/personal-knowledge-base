@@ -1,0 +1,140 @@
+# Gitleaks configuration for personal-knowledge-base
+# Prevents secrets from being committed via pre-commit hook.
+#
+# Paths in .gitignore won't be committed, but we explicitly allowlist
+# them here so gitleaks doesn't flag them during local scans.
+
+title = "pkb gitleaks config"
+
+[allowlist]
+  description = "Global allowlist"
+
+  # Paths that are gitignored (never committed) -- safe to ignore.
+  paths = [
+    '''\.claude-flow/learning/''',
+    '''\.claude-flow/daemon\.log''',
+    '''\.claude-flow/daemon\.pid''',
+    '''\.swarm/''',
+    '''data/''',
+    '''cache/''',
+    '''tmp/''',
+    '''\.bv/''',
+    '''token\.json''',
+    '''\.env$''',
+  ]
+
+  # Example / placeholder files contain fake credential patterns.
+  files = [
+    '''\.env\.example''',
+    '''testdata/''',
+    '''_test\.go$''',
+  ]
+
+# --------------------------------------------------------------------------
+# Rules -- detect common secret patterns in staged content.
+# --------------------------------------------------------------------------
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API Key"
+  regex = '''(?i)(?:api[_-]?key|apikey)\s*[:=]\s*['"]?([a-z0-9/+=]{20,})['"]?'''
+  tags = ["api", "key"]
+
+[[rules]]
+  id = "generic-secret"
+  description = "Generic Secret"
+  regex = '''(?i)(?:secret|password|passwd|pwd)\s*[:=]\s*['"]?([^\s'"]{8,})['"]?'''
+  tags = ["secret"]
+
+  [rules.allowlist]
+    regexes = [
+      '''(?i)your-client-secret''',
+      '''(?i)GOCSPX-your-client-secret''',
+      '''(?i)example''',
+      '''(?i)placeholder''',
+      '''(?i)changeme''',
+      '''(?i)password123''',
+    ]
+
+[[rules]]
+  id = "aws-access-key"
+  description = "AWS Access Key ID"
+  regex = '''(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+  tags = ["aws", "key"]
+
+[[rules]]
+  id = "aws-secret-key"
+  description = "AWS Secret Access Key"
+  regex = '''(?i)aws_?secret_?access_?key\s*[:=]\s*['"]?([A-Za-z0-9/+=]{40})['"]?'''
+  tags = ["aws", "secret"]
+
+[[rules]]
+  id = "gcp-service-account"
+  description = "GCP Service Account Key"
+  regex = '''"type"\s*:\s*"service_account"'''
+  tags = ["gcp", "key"]
+
+[[rules]]
+  id = "google-oauth-client-secret"
+  description = "Google OAuth Client Secret (real, not placeholder)"
+  regex = '''GOCSPX-[A-Za-z0-9_-]{28,}'''
+  tags = ["google", "oauth"]
+
+  [rules.allowlist]
+    regexes = [
+      '''GOCSPX-your-client-secret''',
+    ]
+
+[[rules]]
+  id = "private-key"
+  description = "Private Key (PEM)"
+  regex = '''-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)?\s*PRIVATE KEY-----'''
+  tags = ["key", "private"]
+
+[[rules]]
+  id = "bearer-token"
+  description = "Bearer Token in code or config"
+  regex = '''(?i)bearer\s+[a-z0-9_\-\.]{20,}'''
+  tags = ["auth", "bearer"]
+
+[[rules]]
+  id = "oauth-token"
+  description = "OAuth Access/Refresh Token"
+  regex = '''(?i)(?:access_token|refresh_token)\s*[:=]\s*['"]?([a-z0-9_\-\.\/+=]{20,})['"]?'''
+  tags = ["oauth", "token"]
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Anthropic API Key"
+  regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+  tags = ["anthropic", "key"]
+
+[[rules]]
+  id = "openai-api-key"
+  description = "OpenAI API Key"
+  regex = '''sk-[a-zA-Z0-9]{20,}'''
+  tags = ["openai", "key"]
+
+  [rules.allowlist]
+    regexes = [
+      '''sk-ant-\.\.\.''',
+      '''sk-\.\.\.''',
+    ]
+
+[[rules]]
+  id = "github-token"
+  description = "GitHub Personal Access Token"
+  regex = '''gh[ps]_[A-Za-z0-9_]{36,}'''
+  tags = ["github", "token"]
+
+[[rules]]
+  id = "slack-token"
+  description = "Slack Token"
+  regex = '''xox[bpors]-[0-9]{10,}-[a-zA-Z0-9-]+'''
+  tags = ["slack", "token"]
+
+[[rules]]
+  id = "jwt-token"
+  description = "JSON Web Token"
+  regex = '''eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+'''
+  tags = ["jwt", "token"]

@@ -5,3 +5,7 @@ sessions/
 neural/
 *.log
 *.tmp
+
+# Machine-local daemon state (PIDs, file paths, runtime state)
+daemon-state.json
+daemon.pid

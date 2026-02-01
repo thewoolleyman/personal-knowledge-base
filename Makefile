@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version
+.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets
 
 BINARY := pkb
 BUILD_DIR := .
@@ -54,6 +54,10 @@ clean:
 ## run: Build and run pkb --help
 run: build
 	./$(BINARY) --help
+
+## scan-secrets: Run gitleaks to detect hardcoded secrets (install with: brew install gitleaks)
+scan-secrets:
+	gitleaks detect --source . --no-banner -c .gitleaks.toml --verbose
 
 ## verify-hooks: Prove two-tier logging, context bundles, and recall work end-to-end
 verify-hooks:
