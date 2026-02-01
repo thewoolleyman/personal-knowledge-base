@@ -697,6 +697,25 @@ This includes:
 
 Remember: **Claude Flow CLI coordinates, Claude Code Task tool creates!**
 
+## MANDATORY: Memory Protocol for Bead Work
+
+When working on beads issues, you MUST use claude-flow memory:
+
+**Before starting any bead** — search for relevant patterns:
+```bash
+npx @claude-flow/cli@latest memory search --query "<bead title and keywords>"
+```
+Apply any relevant patterns found. Do not reinvent approaches that already worked.
+
+**After completing any bead** — store what you learned:
+```bash
+npx @claude-flow/cli@latest memory store --namespace patterns --key "pattern-<short-name>" --value "<what worked>"
+```
+
+**At session end** — store session-level patterns for anything significant learned.
+
+This is not optional. Memory search before work and memory store after work are as mandatory as writing tests before code.
+
 ## MANDATORY: TDD + Pair Programming
 
 ALL code in this project MUST be developed using strict TDD:
