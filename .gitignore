@@ -3,5 +3,7 @@ tmp
 data/
 cache/
 *.db
+*.db-shm
+*.db-wal
 pkb
 .claude-flow/learning/hook_logs/
