@@ -56,19 +56,22 @@ case "$TOOL_NAME" in
     FILE_PATH="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')"
     [ -z "$FILE_PATH" ] && exit 0
     REL="$(to_relative "$FILE_PATH")"
-    printf '{"op":"read","file":"%s"}\n' "$REL" >> "$BUNDLE_FILE"
+    REL_JSON="$(printf '%s' "$REL" | jq -Rs '.')"
+    printf '{"op":"read","file":%s}\n' "$REL_JSON" >> "$BUNDLE_FILE"
     ;;
   Write)
     FILE_PATH="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')"
     [ -z "$FILE_PATH" ] && exit 0
     REL="$(to_relative "$FILE_PATH")"
-    printf '{"op":"write","file":"%s"}\n' "$REL" >> "$BUNDLE_FILE"
+    REL_JSON="$(printf '%s' "$REL" | jq -Rs '.')"
+    printf '{"op":"write","file":%s}\n' "$REL_JSON" >> "$BUNDLE_FILE"
     ;;
   Edit|MultiEdit)
     FILE_PATH="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')"
     [ -z "$FILE_PATH" ] && exit 0
     REL="$(to_relative "$FILE_PATH")"
-    printf '{"op":"edit","file":"%s"}\n' "$REL" >> "$BUNDLE_FILE"
+    REL_JSON="$(printf '%s' "$REL" | jq -Rs '.')"
+    printf '{"op":"edit","file":%s}\n' "$REL_JSON" >> "$BUNDLE_FILE"
     ;;
   Task)
     DESC="$(printf '%s' "$INPUT" | jq -r '.tool_input.description // empty')"

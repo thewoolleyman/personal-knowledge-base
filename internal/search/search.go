@@ -23,7 +23,7 @@ func New(cs ...connectors.Connector) *Engine {
 // Returns an error only if ALL connectors fail.
 func (e *Engine) Search(ctx context.Context, query string) ([]connectors.Result, error) {
 	if len(e.connectors) == 0 {
-		return nil, nil
+		return []connectors.Result{}, nil
 	}
 
 	type result struct {

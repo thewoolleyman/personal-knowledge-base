@@ -2,9 +2,11 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -175,4 +177,69 @@ func TestModel_EscapeDuringLoading_CancelsContext(t *testing.T) {
 	// The context should be cancelled
 	<-done
 	assert.Error(t, ctx.Err(), "context should be cancelled after Escape")
+}
+
+// BUG-013: Init() should return textinput.Blink directly, not a wrapping closure.
+func TestModel_Init_ReturnsBlinkCmd(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	cmd := m.Init()
+	require.NotNil(t, cmd, "Init must return a non-nil tea.Cmd")
+
+	// Execute the command and verify it returns a textinput.Blink message.
+	msg := cmd()
+	// textinput.Blink() returns a blink message; verify it is the same type.
+	expected := textinput.Blink()
+	assert.IsType(t, expected, msg, "Init cmd should produce a blink message")
+}
+
+// BUG-003: Successful search must clear a stale error from a previous failure.
+func TestModel_SearchResult_ClearsStaleError(t *testing.T) {
+	results := []connectors.Result{
+		{Title: "Good Result", URL: "https://example.com", Source: "test"},
+	}
+	m := NewModel(mockSearchFn(results, nil))
+
+	// Simulate a previous failed search leaving a stale error.
+	m.err = fmt.Errorf("previous network error")
+	m.state = stateLoading
+
+	// Receive a successful search result.
+	updated, _ := m.Update(searchResultMsg{results: results})
+	model := updated.(Model)
+
+	assert.Nil(t, model.err, "successful search must clear stale error")
+	assert.Equal(t, stateResults, model.state)
+	assert.Len(t, model.results, 1)
+}
+
+// BUG-012: cancel must be set to nil after search completes (success path).
+func TestModel_SearchResult_ClearsCancelOnSuccess(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+
+	// Simulate having a cancel function set from starting a search.
+	cancelled := false
+	m.cancel = func() { cancelled = true }
+	m.state = stateLoading
+
+	results := []connectors.Result{{Title: "Doc", URL: "u", Source: "s"}}
+	updated, _ := m.Update(searchResultMsg{results: results})
+	model := updated.(Model)
+
+	assert.Nil(t, model.cancel, "cancel must be nil after search completes successfully")
+	assert.False(t, cancelled, "cancel should not be called on success, just cleared")
+}
+
+// BUG-012: cancel must be set to nil after search completes (error path).
+func TestModel_SearchResult_ClearsCancelOnError(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+
+	// Simulate having a cancel function set from starting a search.
+	m.cancel = func() {}
+	m.state = stateLoading
+
+	updated, _ := m.Update(searchResultMsg{err: fmt.Errorf("search failed")})
+	model := updated.(Model)
+
+	assert.Nil(t, model.cancel, "cancel must be nil after search completes with error")
+	assert.Error(t, model.err)
 }

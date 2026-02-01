@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
@@ -62,7 +66,28 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(out, "Listening on %s\n", srv.Addr())
-			return srv.Serve()
+
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- srv.Serve()
+			}()
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+			select {
+			case sig := <-sigCh:
+				fmt.Fprintf(out, "Received %s, shutting down...\n", sig)
+				if err := srv.Shutdown(context.Background()); err != nil {
+					return fmt.Errorf("shutdown: %w", err)
+				}
+				return nil
+			case err := <-errCh:
+				if errors.Is(err, http.ErrServerClosed) {
+					return nil
+				}
+				return err
+			}
 		},
 	}
 	serveCmd.Flags().String("addr", ":8080", "listen address")
@@ -98,7 +123,12 @@ func run(args []string, searchFn SearchFunc) error {
 }
 
 func buildSearchFn() SearchFunc {
-	appCfg, _ := config.Load()
+	appCfg, err := config.Load()
+	if err != nil {
+		return func(_ context.Context, _ string) ([]connectors.Result, error) {
+			return nil, fmt.Errorf("failed to load config: %w", err)
+		}
+	}
 
 	if appCfg.GoogleClientID == "" || appCfg.GoogleClientSecret == "" {
 		return func(_ context.Context, _ string) ([]connectors.Result, error) {

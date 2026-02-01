@@ -54,7 +54,7 @@ func NewModel(searchFn SearchFunc) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg { return textinput.Blink() }
+	return textinput.Blink
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -126,6 +126,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleSearchResult(msg searchResultMsg) (tea.Model, tea.Cmd) {
+	m.cancel = nil
 	if msg.err != nil {
 		m.err = msg.err
 		m.state = stateInput
@@ -133,6 +134,7 @@ func (m Model) handleSearchResult(msg searchResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.err = nil
 	m.results = msg.results
 	m.cursor = 0
 	m.state = stateResults

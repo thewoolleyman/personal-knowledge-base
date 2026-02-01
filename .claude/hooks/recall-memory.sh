@@ -13,7 +13,7 @@ INPUT="$(cat 2>/dev/null)" || INPUT='{}'
 [ -z "$INPUT" ] && exit 0
 
 # Extract the user's prompt
-PROMPT="$(printf '%s' "$INPUT" | jq -r '.prompt // empty')"
+PROMPT="$(printf '%s' "$INPUT" | jq -r '.prompt // .tool_input.prompt // empty')"
 [ -z "$PROMPT" ] && exit 0
 
 # Skip very short prompts (greetings, single words)
@@ -23,7 +23,7 @@ QUERY="$(printf '%s' "$PROMPT" | head -c 200)"
 FOUND=""
 
 # ── Strategy 1: Semantic search via memory DB ──────────────────────
-DB=".claude/memory.db"
+DB=".swarm/memory.db"
 if [ -f "$DB" ] && [ -s "$DB" ]; then
   RESULTS="$(npx @claude-flow/cli@latest memory search --query "$QUERY" --limit 5 2>/dev/null)" || RESULTS=""
   if printf '%s' "$RESULTS" | grep -q '|.*|.*|.*|'; then

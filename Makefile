@@ -71,30 +71,31 @@ verify-hooks:
 	@echo "==> Testing build-context-bundle.sh with Edit event..."
 	@echo '{"session_id":"test-session","tool_name":"Edit","tool_input":{"file_path":"'$$(pwd)'/internal/server/server.go"}}' \
 	  | .claude/hooks/build-context-bundle.sh --type tool
-	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
+	@BUNDLE=$$(ls -t .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
 	 test -n "$$BUNDLE" || { echo "FAIL: context bundle not created"; exit 1; }; \
+	 echo "$$BUNDLE" > /tmp/pkb-verify-bundle-path; \
 	 jq -e 'select(.op=="edit" and .file=="internal/server/server.go")' "$$BUNDLE" >/dev/null \
 	   || { echo "FAIL: edit entry not found or path not relative"; exit 1; }
 	@echo "    OK: Edit event in context bundle with relative path"
 	@echo "==> Testing build-context-bundle.sh with Bash event..."
 	@echo '{"session_id":"test-session","tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
 	  | .claude/hooks/build-context-bundle.sh --type tool
-	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
-	 jq -e 'select(.op=="command")' "$$BUNDLE" >/dev/null \
+	@cat .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null \
+	 | jq -e 'select(.op=="command")' >/dev/null \
 	   || { echo "FAIL: command entry not found in bundle"; exit 1; }
 	@echo "    OK: Bash command in context bundle"
 	@echo "==> Testing that hook-infrastructure commands are skipped..."
 	@echo '{"session_id":"test-session","tool_name":"Bash","tool_input":{"command":"npx @claude-flow/cli@latest memory search"}}' \
 	  | .claude/hooks/build-context-bundle.sh --type tool
-	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
-	 LINES=$$(wc -l < "$$BUNDLE" | tr -d ' '); \
-	 if [ "$$LINES" -ne 2 ]; then echo "FAIL: expected 2 lines, got $$LINES (hook command was not skipped)"; exit 1; fi
+	@BUNDLE=$$(cat /tmp/pkb-verify-bundle-path); \
+	 LINES=$$(cat .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | wc -l | tr -d ' '); \
+	 if [ "$$LINES" -ne 2 ]; then echo "FAIL: expected 2 total lines, got $$LINES (hook command was not skipped)"; exit 1; fi
 	@echo "    OK: Hook-infrastructure command correctly skipped"
 	@echo "==> Testing build-context-bundle.sh with prompt..."
 	@echo '{"session_id":"test-session","prompt":"How do I implement the OAuth connector?"}' \
 	  | .claude/hooks/build-context-bundle.sh --type prompt
-	@BUNDLE=$$(ls .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null | head -1); \
-	 jq -e 'select(.op=="prompt")' "$$BUNDLE" >/dev/null \
+	@cat .claude-flow/learning/context_bundles/*_test-session.jsonl 2>/dev/null \
+	 | jq -e 'select(.op=="prompt")' >/dev/null \
 	   || { echo "FAIL: prompt entry not found in bundle"; exit 1; }
 	@echo "    OK: User prompt in context bundle"
 	@echo "==> Testing recall-memory.sh (memory + bundle recall)..."
@@ -113,5 +114,6 @@ verify-hooks:
 	@echo "==> Cleaning up test artifacts..."
 	@rm -rf .claude-flow/learning/hook_logs/test-session
 	@rm -f .claude-flow/learning/context_bundles/*_test-session.jsonl
+	@rm -f /tmp/pkb-verify-bundle-path
 	@echo ""
 	@echo "All checks passed."

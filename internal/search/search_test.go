@@ -79,6 +79,8 @@ func TestEngine_Search_NoConnectors(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, results)
+	// BUG-014: Must return non-nil empty slice, not nil.
+	assert.NotNil(t, results, "expected non-nil empty slice for zero connectors")
 }
 
 func TestEngine_Search_AllFail(t *testing.T) {

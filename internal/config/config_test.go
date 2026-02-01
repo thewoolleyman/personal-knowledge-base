@@ -24,3 +24,16 @@ func TestLoad_ReadsEnvVars(t *testing.T) {
 	assert.Equal(t, "test-client-id", cfg.GoogleClientID)
 	assert.Equal(t, "test-secret", cfg.GoogleClientSecret)
 }
+
+func TestLoad_TokenPathDefault(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "token.json", cfg.TokenPath)
+}
+
+func TestLoad_TokenPathEnvOverride(t *testing.T) {
+	t.Setenv("PKB_TOKEN_PATH", "/custom/token.json")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/token.json", cfg.TokenPath)
+}

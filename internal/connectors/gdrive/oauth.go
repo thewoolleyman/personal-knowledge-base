@@ -14,9 +14,14 @@ func SaveToken(path string, token *oauth2.Token) error {
 	if err != nil {
 		return fmt.Errorf("create token file: %w", err)
 	}
-	defer f.Close()
-
-	return json.NewEncoder(f).Encode(token)
+	err = json.NewEncoder(f).Encode(token)
+	if closeErr := f.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return fmt.Errorf("write token file: %w", err)
+	}
+	return nil
 }
 
 // LoadToken reads an OAuth2 token from a JSON file.
