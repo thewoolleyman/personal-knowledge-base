@@ -38,12 +38,15 @@ Then start Claude with browser access:
 claude --chrome
 ```
 
-Paste this prompt (replace `<epic-id>` with the actual ID):
+Paste this prompt (replace `<epic-id>` with the actual ID from the pour output):
 
 ```
 Run `bd --no-daemon ready --mol <epic-id>` to see the ready steps,
 then walk me through each one. Reference: docs/obtaining-secrets.md
 ```
+
+For the current Google OAuth molecule already poured, the epic ID is
+`personal-knowledge-base-mol-6d8`.
 
 Claude will:
 1. Open each URL in your browser
