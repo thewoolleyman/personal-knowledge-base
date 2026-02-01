@@ -27,6 +27,9 @@ title = "pkb gitleaks config"
     '''\.env\.example''',
     '''testdata/''',
     '''_test\.go$''',
+    # Docs and formula templates (contain placeholder credential examples)
+    '''docs/''',
+    '''\.beads/formulas/''',
     # Agent definitions, commands, and skills (contain example credentials in docs)
     '''\.claude/agents/''',
     '''\.claude/commands/''',
