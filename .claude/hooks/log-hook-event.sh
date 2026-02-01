@@ -18,12 +18,21 @@ mkdir -p "$LOG_DIR"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Append full payload as a single JSONL line (flock for atomic writes)
-(
-  flock 200
+# Append full payload as a single JSONL line with portable locking
+LOCKFILE="${LOG_DIR}/${HOOK_NAME}.jsonl.lock"
+LOGFILE="${LOG_DIR}/${HOOK_NAME}.jsonl"
+if command -v flock >/dev/null 2>&1; then
+  (
+    flock 200
+    jq -cn --arg ts "$TS" --argjson payload "$INPUT" \
+      '{"ts": $ts, "payload": $payload}' >> "$LOGFILE" 2>/dev/null || true
+  ) 200>"$LOCKFILE"
+else
+  # macOS: use mkdir as atomic lock (no flock available)
+  while ! mkdir "$LOCKFILE.d" 2>/dev/null; do sleep 0.01; done
   jq -cn --arg ts "$TS" --argjson payload "$INPUT" \
-    '{"ts": $ts, "payload": $payload}' \
-    >> "${LOG_DIR}/${HOOK_NAME}.jsonl" 2>/dev/null || true
-) 200>"${LOG_DIR}/${HOOK_NAME}.jsonl.lock"
+    '{"ts": $ts, "payload": $payload}' >> "$LOGFILE" 2>/dev/null || true
+  rmdir "$LOCKFILE.d" 2>/dev/null || true
+fi
 
 exit 0
