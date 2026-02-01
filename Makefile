@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets
+.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets open-cicd-webpage
 
 BINARY := pkb
 BUILD_DIR := .
@@ -54,6 +54,10 @@ clean:
 ## run: Build and run pkb --help
 run: build
 	./$(BINARY) --help
+
+## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser (macOS)
+open-cicd-webpage:
+	open https://github.com/thewoolleyman/personal-knowledge-base/actions
 
 ## scan-secrets: Run gitleaks to detect hardcoded secrets (managed via mise)
 scan-secrets:
