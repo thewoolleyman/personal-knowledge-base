@@ -3,7 +3,6 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -78,13 +77,15 @@ jobs:
         run: make test-accept
 
   # =============================================================================
-  # Stage 3: Release - Cross-compile and publish GitHub Release (tag pushes only)
+  # Stage 3: Release - Auto-release on push to main, skip if version exists
   # =============================================================================
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [unit-tests, acceptance-tests]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      release_created: ${{ steps.check_release.outputs.release_created }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -94,13 +95,32 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Extract version from tag
+      - name: Read version from VERSION file
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "Release v$VERSION already exists, skipping"
+            echo "release_created=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release v$VERSION does not exist, will create"
+            echo "release_created=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cross-compile for all platforms
+        if: steps.check_release.outputs.release_created == 'true'
         run: |
           mkdir -p dist
+          VERSION="${{ steps.version.outputs.version }}"
           targets="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
           for target in $targets; do
             GOOS="${target%/*}"
@@ -110,12 +130,34 @@ jobs:
             output="dist/pkb-${GOOS}-${GOARCH}${ext}"
             echo "Building $output..."
             GOOS=$GOOS GOARCH=$GOARCH go build \
-              -ldflags "-X main.version=${{ steps.version.outputs.version }}" \
+              -ldflags "-X main.version=$VERSION" \
               -o "$output" ./cmd/pkb
           done
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: dist/*
+        if: steps.check_release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            dist/*
+
+      - name: Bump version for next release
+        if: steps.check_release.outputs.release_created == 'true'
+        run: |
+          CURRENT="${{ steps.version.outputs.version }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
+
+          echo "Bumping version: $CURRENT -> $NEXT_VERSION"
+          echo "$NEXT_VERSION" > VERSION
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+          git push origin main
