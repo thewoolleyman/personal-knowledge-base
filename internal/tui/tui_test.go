@@ -1,0 +1,101 @@
+package tui
+
+import (
+	"context"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func mockSearchFn(results []connectors.Result, err error) SearchFunc {
+	return func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return results, err
+	}
+}
+
+func TestModel_Init_ShowsSearchInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	assert.True(t, m.searchInput.Focused())
+	assert.Equal(t, stateInput, m.state)
+}
+
+func TestModel_Search_DisplaysResults(t *testing.T) {
+	results := []connectors.Result{
+		{Title: "Doc A", URL: "https://example.com/a", Source: "test"},
+		{Title: "Doc B", URL: "https://example.com/b", Source: "test"},
+	}
+	m := NewModel(mockSearchFn(results, nil))
+
+	// Simulate typing a query
+	m.searchInput.SetValue("test")
+
+	// Simulate pressing Enter
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+
+	// The model should transition to loading state and return a command
+	require.NotNil(t, cmd)
+	assert.Equal(t, stateLoading, model.state)
+
+	// Simulate receiving search results
+	updated, _ = model.Update(searchResultMsg{results: results})
+	model = updated.(Model)
+
+	assert.Equal(t, stateResults, model.state)
+	assert.Len(t, model.results, 2)
+	assert.Equal(t, "Doc A", model.results[0].Title)
+	assert.Equal(t, 0, model.cursor)
+}
+
+func TestModel_Navigate_SelectsResult(t *testing.T) {
+	results := []connectors.Result{
+		{Title: "Doc A", URL: "https://example.com/a", Source: "test"},
+		{Title: "Doc B", URL: "https://example.com/b", Source: "test"},
+		{Title: "Doc C", URL: "https://example.com/c", Source: "test"},
+	}
+	m := NewModel(mockSearchFn(results, nil))
+	m.state = stateResults
+	m.results = results
+	m.cursor = 0
+
+	// Down arrow
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model := updated.(Model)
+	assert.Equal(t, 1, model.cursor)
+
+	// Down again
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	assert.Equal(t, 2, model.cursor)
+
+	// Down at bottom stays at bottom
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	assert.Equal(t, 2, model.cursor)
+
+	// Up arrow
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model = updated.(Model)
+	assert.Equal(t, 1, model.cursor)
+}
+
+func TestModel_Escape_ReturnsToInput(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	m.state = stateResults
+	m.results = []connectors.Result{{Title: "Doc"}}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	model := updated.(Model)
+
+	assert.Equal(t, stateInput, model.state)
+	assert.True(t, model.searchInput.Focused())
+}
+
+func TestModel_View_ContainsSearchPrompt(t *testing.T) {
+	m := NewModel(mockSearchFn(nil, nil))
+	view := m.View()
+	assert.Contains(t, view, "Search")
+}

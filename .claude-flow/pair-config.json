@@ -1,0 +1,27 @@
+{
+  "pair": {
+    "general": {
+      "enabled": true,
+      "defaultMode": "tdd",
+      "defaultAgent": "tdd-specialist",
+      "language": "go"
+    },
+    "verification": {
+      "enabled": true,
+      "threshold": 0.95,
+      "autoRollback": true,
+      "preCommitCheck": true,
+      "blockOnFailure": true
+    },
+    "testing": {
+      "enabled": true,
+      "autoRun": true,
+      "framework": "go test",
+      "coverage": {
+        "enabled": true,
+        "minimum": 100,
+        "enforce": true
+      }
+    }
+  }
+}

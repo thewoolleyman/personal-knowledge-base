@@ -79,8 +79,18 @@ case "$MODE" in
 
   # ── Stop ──────────────────────────────────────────────────
   stop-check)
-    echo '{"ok":true}'
-    exit 0
+    # Call the real CLI stop-check which checks for unconsolidated patterns
+    # Exit code 2 = block Claude from stopping (patterns need consolidation)
+    # Exit code 0 = ok to stop
+    exec npx @claude-flow/cli@latest hooks stop-check 2>/dev/null || echo '{"ok":true}'
+    ;;
+
+  # ── SessionEnd ──────────────────────────────────────────────
+  session-end)
+    exec npx @claude-flow/cli@latest hooks session-end \
+      --generate-summary true \
+      --persist-state true \
+      --export-metrics true 2>/dev/null || true
     ;;
 
   # ── Notification ──────────────────────────────────────────

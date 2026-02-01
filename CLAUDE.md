@@ -699,6 +699,83 @@ This includes:
 
 Remember: **Claude Flow CLI coordinates, Claude Code Task tool creates!**
 
+## MANDATORY: TDD + Pair Programming
+
+ALL code in this project MUST be developed using strict TDD:
+1. Write a failing test FIRST (RED)
+2. Write minimum code to pass (GREEN)
+3. Refactor with tests passing (REFACTOR)
+4. No code without a test. No exceptions.
+
+Go testing conventions:
+- Tests in same package (_test.go files alongside source)
+- Interfaces for all external dependencies (mockable)
+- Table-driven tests for multiple cases
+- `go test -race ./...` before every commit
+- 100% line coverage on new code — every line exists because a test demanded it
+- `main()` is a thin wrapper calling `run() error` — test `run()`, not `main()`
+- Never use `log.Fatal()` or `os.Exit()` outside of `main()` — return errors instead
+- All OS/system/network interaction behind interfaces — mock in tests
+
+Testing stack:
+- `testing` — standard library (primary)
+- `github.com/stretchr/testify/assert` — assertion helpers
+- `github.com/stretchr/testify/mock` — mock generation for interfaces
+- `go test -cover ./...` — coverage tracking
+- `go test -race ./...` — race condition detection
+
+### Testing Pyramid (CRITICAL — read this before writing any test)
+
+This project uses a testing pyramid. Each level has a different purpose:
+
+**Unit tests (bottom — many, fast, isolated):**
+- Test individual functions and methods with mocks
+- Run with `go test ./...`
+- Cover internal logic, edge cases, error handling
+
+**Component integration tests (middle — fewer, test real interactions):**
+- Test that real components work together (e.g., Connector + real API)
+- Use build tag `//go:build integration`
+- May require credentials, network access
+
+**Acceptance tests (top — fewest, test from the USER'S perspective):**
+- Test the ACTUAL USER EXPERIENCE of the application
+- For this CLI app: build the real binary, run it with real arguments, check stdout/stderr/exit codes
+- These tests do exactly what a human would do when following the README
+- Use build tag `//go:build acceptance`
+- Run with `go test -tags=acceptance ./tests/acceptance/`
+
+### THE RULE FOR ACCEPTANCE TESTS:
+**If a human follows the README and gets an error, an acceptance test MUST catch it.**
+
+Acceptance tests must:
+1. Build the actual binary (`go build`)
+2. Execute it as a subprocess (`exec.Command("./pkb", "search", "query")`)
+3. Check stdout, stderr, and exit code
+4. NEVER import internal packages or call Go functions directly
+5. Treat the application as a black box — the same way a user does
+
+If you write a test that imports `internal/*` and calls Go functions, it is NOT
+an acceptance test. It may be a useful unit or integration test, but it does not
+verify that the software is usable from a human's perspective.
+
+### When to write which:
+- New internal function → unit test
+- New connector/API integration → component integration test
+- New CLI command or user-facing behavior → acceptance test
+- Updating the README with new instructions → acceptance test that mirrors those instructions
+
+### Makefile (MANDATORY)
+
+All developer-facing commands live in the `Makefile`. Run `make help` to discover them.
+
+Rules:
+- When adding a new tool, task, or workflow that a developer would run, add a Makefile target for it.
+- When adding a new test category, add a `make test-*` target.
+- The README must reference `make` targets, not raw `go` commands.
+- CI workflows should call `make` targets where possible.
+- Keep targets simple — each one should be one or two commands, not a script.
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

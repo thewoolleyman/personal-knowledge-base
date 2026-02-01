@@ -1,0 +1,50 @@
+package gdrive
+
+import (
+	"context"
+	"fmt"
+
+	drive "google.golang.org/api/drive/v3"
+	"google.golang.org/api/option"
+	"golang.org/x/oauth2"
+)
+
+// APIClient implements DriveClient using the real Google Drive API.
+type APIClient struct {
+	service *drive.Service
+}
+
+// NewAPIClient creates a real Drive API client using the given OAuth2 token source.
+func NewAPIClient(ctx context.Context, tokenSource oauth2.TokenSource) (*APIClient, error) {
+	srv, err := drive.NewService(ctx, option.WithTokenSource(tokenSource))
+	if err != nil {
+		return nil, fmt.Errorf("create drive service: %w", err)
+	}
+	return &APIClient{service: srv}, nil
+}
+
+func (c *APIClient) SearchFiles(ctx context.Context, query string) ([]DriveFile, error) {
+	q := fmt.Sprintf("fullText contains '%s' and trashed = false", query)
+	call := c.service.Files.List().
+		Q(q).
+		Fields("files(id, name, mimeType, webViewLink)").
+		PageSize(50).
+		Context(ctx)
+
+	resp, err := call.Do()
+	if err != nil {
+		return nil, fmt.Errorf("drive files.list: %w", err)
+	}
+
+	files := make([]DriveFile, len(resp.Files))
+	for i, f := range resp.Files {
+		files[i] = DriveFile{
+			ID:          f.Id,
+			Name:        f.Name,
+			MimeType:    f.MimeType,
+			WebViewLink: f.WebViewLink,
+		}
+	}
+
+	return files, nil
+}

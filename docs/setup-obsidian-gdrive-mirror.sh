@@ -63,6 +63,15 @@ echo "  Source:      $SOURCE_DIR"
 echo "  Destination: $DEST_DIR"
 echo ""
 
+read -p "Does this look correct? (y/n) " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted. Edit the CONFIGURATION section at the top of this script and re-run."
+    exit 0
+fi
+
+echo ""
+
 # ============================================================================
 # PRE-FLIGHT CHECKS
 # ============================================================================

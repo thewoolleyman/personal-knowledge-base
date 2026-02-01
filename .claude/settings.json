@@ -106,7 +106,20 @@
           {
             "type": "command",
             "command": ".claude/hooks/hook-bridge.sh stop-check",
-            "timeout": 1000
+            "timeout": 5000,
+            "continueOnError": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/hook-bridge.sh session-end",
+            "timeout": 10000,
+            "continueOnError": true
           }
         ]
       }
