@@ -78,6 +78,14 @@ type httpServer interface {
 // SearchFunc abstracts the search operation for testability.
 type SearchFunc func(ctx context.Context, query string) ([]connectors.Result, error)
 
+func truncateSnippet(s string) string {
+	const maxLen = 80
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
 func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pkb",
@@ -101,7 +109,11 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			}
 
 			for i, r := range results {
-				fmt.Fprintf(out, "%d. %s\n   %s\n   [%s]\n\n", i+1, r.Title, r.URL, r.Source)
+				if s := truncateSnippet(r.Snippet); s != "" {
+					fmt.Fprintf(out, "%d. %s\n   %s\n   %s\n   [%s]\n\n", i+1, r.Title, s, r.URL, r.Source)
+				} else {
+					fmt.Fprintf(out, "%d. %s\n   %s\n   [%s]\n\n", i+1, r.Title, r.URL, r.Source)
+				}
 			}
 			return nil
 		},

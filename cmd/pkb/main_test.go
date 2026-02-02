@@ -59,6 +59,68 @@ func noopSearch(_ context.Context, _ string) ([]connectors.Result, error) {
 	return nil, nil
 }
 
+func TestTruncateSnippet(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		want   string
+	}{
+		{"empty", "", ""},
+		{"short", "hello world", "hello world"},
+		{"exactly 80", strings.Repeat("x", 80), strings.Repeat("x", 80)},
+		{"81 chars truncated", strings.Repeat("x", 81), strings.Repeat("x", 77) + "..."},
+		{"long string", strings.Repeat("a", 200), strings.Repeat("a", 77) + "..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, truncateSnippet(tt.input))
+		})
+	}
+}
+
+func TestSearchCommand_PrintsSnippet(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return []connectors.Result{
+			{Title: "Doc", Snippet: "This is the snippet text", URL: "https://example.com", Source: "mock"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test"}, mockSearch, &buf)
+	require.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "This is the snippet text")
+}
+
+func TestSearchCommand_OmitsEmptySnippet(t *testing.T) {
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return []connectors.Result{
+			{Title: "Doc", Snippet: "", URL: "https://example.com", Source: "mock"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test"}, mockSearch, &buf)
+	require.NoError(t, err)
+	output := buf.String()
+	// Should have title, URL, source — but only 3 lines of content (no blank snippet line).
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	assert.Equal(t, 3, len(lines), "expected 3 lines (title, URL, source) with no snippet line")
+}
+
+func TestSearchCommand_TruncatesLongSnippet(t *testing.T) {
+	long := strings.Repeat("z", 200)
+	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return []connectors.Result{
+			{Title: "Doc", Snippet: long, URL: "https://example.com", Source: "mock"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test"}, mockSearch, &buf)
+	require.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, strings.Repeat("z", 77)+"...")
+	assert.NotContains(t, output, strings.Repeat("z", 78))
+}
+
 func TestRun_ReturnsNilOnSuccess(t *testing.T) {
 	err := run([]string{}, noopSearch)
 	assert.NoError(t, err)
