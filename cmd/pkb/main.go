@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cwoolley/personal-knowledge-base/internal/apiclient"
 	"github.com/cwoolley/personal-knowledge-base/internal/auth"
+	pkbweb "github.com/cwoolley/personal-knowledge-base/internal/web"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
@@ -175,6 +176,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			addr, _ := cmd.Flags().GetString("addr")
 			srv := server.New(addr)
 			srv.Handle("GET /search", searchHandler(searchFn))
+			srv.Handle("GET /", pkbweb.Handler())
 
 			if err := srv.Listen(); err != nil {
 				return err

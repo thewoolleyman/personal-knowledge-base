@@ -666,6 +666,41 @@ func TestServeSearch_WithoutSources_PassesNil(t *testing.T) {
 	}
 }
 
+func TestServeCommand_ServesWebUI(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, noopSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	assert.Contains(t, html, "<html")
+	assert.Contains(t, html, "Search")
+	assert.Contains(t, html, "gdrive")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
 func TestServeSearch_SearchError_Returns500(t *testing.T) {
 	testCh := make(chan os.Signal, 1)
 	origMakeSignalCh := makeSignalCh
