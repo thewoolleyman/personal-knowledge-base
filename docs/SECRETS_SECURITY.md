@@ -272,7 +272,7 @@ These are the files committed to git by beads and claude-flow tooling:
    *.db-wal
    *.db-shm
    .claude-flow/learning/
-   .swarm/state.json
+   .swarm/
    ```
 
 ### Adding hook-level redaction (Claude Code specific)
