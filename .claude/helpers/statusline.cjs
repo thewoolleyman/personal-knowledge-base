@@ -90,16 +90,23 @@ function getUserInfo() {
     const claudeConfigPath = path.join(homedir, '.claude.json');
     if (fs.existsSync(claudeConfigPath)) {
       const claudeConfig = JSON.parse(fs.readFileSync(claudeConfigPath, 'utf-8'));
-      // Try to find lastModelUsage - check current dir and parent dirs
+      // Try to find lastModelUsage - prefer most specific (longest) matching path
       let lastModelUsage = null;
       const cwd = process.cwd();
       if (claudeConfig.projects) {
-        // Try exact match first, then check if cwd starts with any project path
+        // Find all matching paths and pick the longest one (most specific)
+        let bestMatch = null;
+        let bestMatchLength = 0;
         for (const [projectPath, projectConfig] of Object.entries(claudeConfig.projects)) {
           if (cwd === projectPath || cwd.startsWith(projectPath + '/')) {
-            lastModelUsage = projectConfig.lastModelUsage;
-            break;
+            if (projectPath.length > bestMatchLength) {
+              bestMatch = projectConfig;
+              bestMatchLength = projectPath.length;
+            }
           }
+        }
+        if (bestMatch) {
+          lastModelUsage = bestMatch.lastModelUsage;
         }
       }
       if (lastModelUsage) {
@@ -109,11 +116,14 @@ function getUserInfo() {
           // Or find the one with most tokens (most actively used this session)
           let modelId = modelIds[modelIds.length - 1];
           if (modelIds.length > 1) {
-            // If multiple models, pick the one with most total tokens
+            // If multiple models, pick the one with most total tokens (including cache tokens)
             let maxTokens = 0;
             for (const id of modelIds) {
               const usage = lastModelUsage[id];
-              const total = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+              const total = (usage.inputTokens || 0) +
+                           (usage.outputTokens || 0) +
+                           (usage.cacheReadInputTokens || 0) +
+                           (usage.cacheCreationInputTokens || 0);
               if (total > maxTokens) {
                 maxTokens = total;
                 modelId = id;
@@ -122,6 +132,7 @@ function getUserInfo() {
           }
           // Parse model ID to human-readable name
           if (modelId.includes('opus')) modelName = 'Opus 4.5';
+          else if (modelId.includes('sonnet-4-5')) modelName = 'Sonnet 4.5';
           else if (modelId.includes('sonnet')) modelName = 'Sonnet 4';
           else if (modelId.includes('haiku')) modelName = 'Haiku 4.5';
           else modelName = modelId.split('-').slice(1, 3).join(' ');

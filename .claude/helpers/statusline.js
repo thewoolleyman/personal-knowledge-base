@@ -47,11 +47,41 @@ const c = {
 function getUserInfo() {
   let name = 'user';
   let gitBranch = '';
-  let modelName = 'Opus 4.5';
+  let modelName = 'Sonnet 4.5'; // Default to current Claude Code model
 
   try {
     name = execSync('git config user.name 2>/dev/null || echo "user"', { encoding: 'utf-8' }).trim();
     gitBranch = execSync('git branch --show-current 2>/dev/null || echo ""', { encoding: 'utf-8' }).trim();
+
+    // Try to detect model from environment or config
+    // CLAUDE_MODEL env var is set by Claude Code
+    const envModel = process.env.CLAUDE_MODEL || '';
+    if (envModel.includes('opus')) {
+      modelName = 'Opus 4.5';
+    } else if (envModel.includes('sonnet')) {
+      modelName = 'Sonnet 4.5';
+    } else if (envModel.includes('haiku')) {
+      modelName = 'Haiku 3.5';
+    }
+    // If no env var, check settings.json for modelPreferences
+    else {
+      try {
+        const settingsPath = path.join(process.cwd(), '.claude', 'settings.json');
+        if (fs.existsSync(settingsPath)) {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+          const defaultModel = settings?.claudeFlow?.modelPreferences?.default || '';
+          if (defaultModel.includes('opus')) {
+            modelName = 'Opus 4.5';
+          } else if (defaultModel.includes('sonnet')) {
+            modelName = 'Sonnet 4.5';
+          } else if (defaultModel.includes('haiku')) {
+            modelName = 'Haiku 3.5';
+          }
+        }
+      } catch (e) {
+        // Ignore config read errors
+      }
+    }
   } catch (e) {
     // Ignore errors
   }
