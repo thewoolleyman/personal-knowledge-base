@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -12,7 +14,12 @@ type Config struct {
 	TokenPath         string
 }
 
+// loadDotenv loads environment variables from a .env file if present.
+// godotenv.Load does NOT override existing env vars, so real env always wins.
+var loadDotenv = func() { _ = godotenv.Load() }
+
 func Load() (*Config, error) {
+	loadDotenv()
 	cfg := &Config{
 		ServerAddr:         envOr("PKB_SERVER_ADDR", ":8080"),
 		GoogleClientID:     os.Getenv("PKB_GOOGLE_CLIENT_ID"),

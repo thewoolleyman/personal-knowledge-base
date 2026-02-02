@@ -51,9 +51,13 @@ tidy:
 clean:
 	rm -f $(BINARY)
 
-## run: Build and run pkb --help
+## run: Build and run pkb with args (e.g. make run search "agentic")
+ifeq (run,$(firstword $(MAKECMDGOALS)))
+  RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(RUN_ARGS):;@:)
+endif
 run: build
-	./$(BINARY) --help
+	./$(BINARY) $(RUN_ARGS)
 
 ## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser (macOS)
 open-cicd-webpage:
