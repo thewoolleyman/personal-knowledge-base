@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage
+.PHONY: help build test test-accept test-int test-live test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve
 
 BINARY := pkb
 BUILD_DIR := .
@@ -31,6 +31,10 @@ test-accept:
 test-int:
 	go test -tags=integration -race -v -run TestIntegration ./...
 
+## test-live: Run live API tests (requires real Google credentials and token)
+test-live:
+	go test -tags=live -v -timeout=60s ./tests/live/
+
 ## test-all: Run unit, acceptance, and integration tests
 test-all: test test-accept test-int
 
@@ -58,6 +62,10 @@ ifeq (run,$(firstword $(MAKECMDGOALS)))
 endif
 run: build
 	./$(BINARY) $(RUN_ARGS)
+
+## serve: Build, start the server, and open the web UI in the browser (macOS)
+serve: build
+	./$(BINARY) serve & sleep 1 && open http://localhost:8080
 
 ## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser (macOS)
 open-cicd-webpage:

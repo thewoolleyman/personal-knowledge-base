@@ -104,6 +104,43 @@ jobs:
       - name: Run acceptance tests
         run: make test-accept
 
+  live-tests:
+    name: Live API Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, acceptance-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Write OAuth token file
+        env:
+          PKB_TOKEN_JSON: ${{ secrets.PKB_TOKEN_JSON }}
+        run: |
+          if [ -z "$PKB_TOKEN_JSON" ]; then
+            echo "PKB_TOKEN_JSON secret not set, skipping live tests"
+            exit 0
+          fi
+          mkdir -p ~/.config/pkb
+          echo "$PKB_TOKEN_JSON" > ~/.config/pkb/token.json
+
+      - name: Run live API tests
+        env:
+          PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
+          PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
+          PKB_TOKEN_PATH: ~/.config/pkb/token.json
+        run: |
+          if [ -z "$PKB_GOOGLE_CLIENT_ID" ]; then
+            echo "Google credentials not configured, skipping live tests"
+            exit 0
+          fi
+          make test-live
+
   # =============================================================================
   # Stage 3: Release - Auto-release on push to main, skip if version exists
   # =============================================================================
