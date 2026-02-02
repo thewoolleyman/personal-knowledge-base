@@ -23,25 +23,31 @@ Drive  API   API   API
  API
 ```
 
+All consumers (CLI, TUI, web UI) go through the same HTTP API. The `search` and `interactive` commands start an embedded server on an ephemeral port, make HTTP requests via `apiclient`, and shut down on exit. The `serve` command runs a long-lived server for the web UI and external clients.
+
 ### Key packages
 
 | Package | Purpose |
 |---------|---------|
-| `cmd/pkb` | CLI entry point (Cobra) with `search`, `serve`, and `interactive` (alias `tui`) commands |
-| `internal/server` | HTTP API server with `/health` endpoint |
-| `internal/search` | Search engine — fans out queries to connectors concurrently |
+| `cmd/pkb` | CLI entry point (Cobra) with `search`, `serve`, `interactive`, `auth`, and `version` commands |
+| `internal/apiclient` | HTTP client for the PKB API — used by CLI and TUI to dogfood the server |
+| `internal/server` | HTTP API server with `/health` and `/search` endpoints |
+| `internal/search` | Search engine — fans out queries to connectors concurrently, supports source filtering |
 | `internal/connectors` | `Connector` interface that each data source implements |
 | `internal/connectors/gdrive` | Google Drive connector (search via Drive API) |
+| `internal/connectors/gmail` | Gmail connector (search via Gmail API) |
+| `internal/auth` | OAuth2 authorization code flow with local callback server |
 | `internal/config` | Configuration loading from environment variables |
 | `internal/tui` | Interactive Bubble Tea TUI for search |
 
 ### Current connectors
 
 - **Google Drive** — searches files via `fullText contains` query. Requires OAuth2 credentials.
+- **Gmail** — searches email messages via Gmail API. Uses same OAuth2 token as Drive.
 
 ### Future connectors (not yet implemented)
 
-Gmail, Slack, Notion, Google Keep, Dropbox, S3
+Slack, Notion, Google Keep, Dropbox, S3
 
 ## Development
 
@@ -97,7 +103,9 @@ make build
 ```
 
 Endpoints:
-- `GET /health` -- returns 200 OK
+- `GET /health` — returns 200 OK
+- `GET /search?q=<query>` — returns JSON array of results
+- `GET /search?q=<query>&sources=gdrive` — filter to specific connectors (comma-separated)
 
 ### Interactive TUI
 
