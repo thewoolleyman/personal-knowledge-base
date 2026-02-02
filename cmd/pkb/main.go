@@ -147,8 +147,9 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			}
 			defer cleanup()
 
+			sourcesFlag, _ := cmd.Flags().GetStringSlice("sources")
 			query := strings.Join(args, " ")
-			results, err := client.Search(cmd.Context(), query, nil)
+			results, err := client.Search(cmd.Context(), query, sourcesFlag)
 			if err != nil {
 				return err
 			}
@@ -168,6 +169,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
+	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: gdrive,gmail)")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
