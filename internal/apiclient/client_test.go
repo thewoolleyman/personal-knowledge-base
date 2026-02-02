@@ -20,7 +20,7 @@ func TestSearch_ReturnsResults(t *testing.T) {
 		assert.Equal(t, "/search", r.URL.Path)
 		assert.Equal(t, "test query", r.URL.Query().Get("q"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(want)
+		_ = json.NewEncoder(w).Encode(want)
 	}))
 	defer srv.Close()
 
@@ -34,7 +34,7 @@ func TestSearch_SendsSourcesParam(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "gdrive", r.URL.Query().Get("sources"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]connectors.Result{})
+		_ = json.NewEncoder(w).Encode([]connectors.Result{})
 	}))
 	defer srv.Close()
 
@@ -47,7 +47,7 @@ func TestSearch_SendsMultipleSources(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "gdrive,gmail", r.URL.Query().Get("sources"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]connectors.Result{})
+		_ = json.NewEncoder(w).Encode([]connectors.Result{})
 	}))
 	defer srv.Close()
 
@@ -60,7 +60,7 @@ func TestSearch_OmitsSourcesWhenNil(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.False(t, r.URL.Query().Has("sources"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]connectors.Result{})
+		_ = json.NewEncoder(w).Encode([]connectors.Result{})
 	}))
 	defer srv.Close()
 
@@ -73,7 +73,7 @@ func TestSearch_ServerReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "all connectors failed"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "all connectors failed"})
 	}))
 	defer srv.Close()
 
@@ -86,7 +86,7 @@ func TestSearch_ServerReturnsBadRequest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
 	}))
 	defer srv.Close()
 
@@ -103,7 +103,7 @@ func TestSearch_NetworkError(t *testing.T) {
 
 func TestSearch_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 

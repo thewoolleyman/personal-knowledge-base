@@ -126,7 +126,7 @@ var startEmbeddedServer = func(searchFn SearchFunc) (*apiclient.Client, func(), 
 	go srv.Serve() //nolint:errcheck // shutdown handles cleanup
 	baseURL := "http://" + srv.Addr()
 	client := apiclient.New(baseURL, http.DefaultClient)
-	cleanup := func() { srv.Shutdown(context.Background()) }
+	cleanup := func() { _ = srv.Shutdown(context.Background()) }
 	return client, cleanup, nil
 }
 
