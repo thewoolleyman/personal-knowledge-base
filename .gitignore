@@ -1,6 +1,9 @@
 tmp
 .env
+.env.*
+!.env.example
 token.json
+credentials.json
 data/
 cache/
 *.db
@@ -11,6 +14,13 @@ cache/
 .claude-flow/learning/context_bundles/
 .swarm/state.json
 .swarm/schema.sql
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
 
 # bv (beads viewer) local config and caches
 .bv/

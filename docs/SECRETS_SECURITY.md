@@ -146,18 +146,19 @@ in `mise.toml` and auto-installed -- no manual `brew install` needed.
 gitleaks = "8.21"
 ```
 
-The pre-commit hook resolves gitleaks via mise first, falls back to PATH:
+The pre-commit hook resolves gitleaks via mise first, falls back to PATH.
+It runs `gitleaks protect --staged` before delegating to `bd hook pre-commit`.
+If gitleaks detects secrets, the commit is blocked.
+
+To install or reinstall the hook (e.g., after `bd init` overwrites it):
 
 ```bash
-if command -v mise >/dev/null 2>&1; then
-    GITLEAKS_CMD="mise x -- gitleaks"
-elif command -v gitleaks >/dev/null 2>&1; then
-    GITLEAKS_CMD="gitleaks"
-else
-    echo "Warning: gitleaks not available (install mise)" >&2
-    GITLEAKS_CMD=""
-fi
+make setup-hooks
 ```
+
+This writes `.git/hooks/pre-commit` with the gitleaks + bd chain. The hook
+source of truth is the `setup-hooks` Makefile target -- `.git/hooks/` is not
+tracked by git.
 
 The `.gitleaks.toml` config defines 14 rules covering:
 - Anthropic, OpenAI, AWS, GCP, GitHub, Slack API keys/tokens
@@ -307,8 +308,10 @@ The same principles apply to any tool that persists agent state to git:
 ## Make targets
 
 ```bash
-make scan-secrets    # Run gitleaks detect on the full repo
-make verify-hooks    # Verify hook logging, bundles, and recall work
+make setup-hooks          # Install pre-commit hook (gitleaks + bd chain)
+make scan-secrets         # Run gitleaks detect on the full repo
+make scan-secrets-staged  # Run gitleaks on staged files only
+make verify-hooks         # Verify hook logging, bundles, and recall work
 ```
 
 ## Limitations

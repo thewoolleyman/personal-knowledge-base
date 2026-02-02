@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets open-cicd-webpage
+.PHONY: help build test test-accept test-int test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage
 
 BINARY := pkb
 BUILD_DIR := .
@@ -66,6 +66,63 @@ open-cicd-webpage:
 ## scan-secrets: Run gitleaks to detect hardcoded secrets (managed via mise)
 scan-secrets:
 	mise x -- gitleaks detect --source . --no-banner -c .gitleaks.toml --verbose
+
+## scan-secrets-staged: Run gitleaks on staged files only (same check as pre-commit hook)
+scan-secrets-staged:
+	mise x -- gitleaks protect --staged --no-banner -c .gitleaks.toml --verbose
+
+## setup-hooks: Install pre-commit hook with gitleaks + bd chaining
+setup-hooks:
+	@echo "Installing pre-commit hook (gitleaks + bd)..."
+	@printf '%s\n' \
+	  '#!/usr/bin/env sh' \
+	  '# bd-shim v1 + gitleaks' \
+	  '# bd-hooks-version: 0.49.0' \
+	  '#' \
+	  '# Pre-commit hook: gitleaks secrets scan, then bd (beads) export.' \
+	  '#' \
+	  '# Gitleaks runs first on staged content. If it detects secrets, the' \
+	  '# commit is blocked before bd ever runs. If gitleaks is not installed,' \
+	  '# a warning is printed but the commit proceeds (CI is the backstop).' \
+	  '#' \
+	  '# To reinstall this hook after bd overwrites it:' \
+	  '#   make setup-hooks' \
+	  '' \
+	  '# --- Gitleaks: scan staged content for secrets ---' \
+	  'GITLEAKS_CMD=""' \
+	  'if command -v mise >/dev/null 2>&1; then' \
+	  '    GITLEAKS_CMD="mise x -- gitleaks"' \
+	  'elif command -v gitleaks >/dev/null 2>&1; then' \
+	  '    GITLEAKS_CMD="gitleaks"' \
+	  'fi' \
+	  '' \
+	  'if [ -n "$$GITLEAKS_CMD" ]; then' \
+	  '    $$GITLEAKS_CMD protect --staged --no-banner -c .gitleaks.toml' \
+	  '    if [ $$? -ne 0 ]; then' \
+	  '        echo "" >&2' \
+	  '        echo "ERROR: gitleaks detected secrets in staged files." >&2' \
+	  '        echo "  Fix the issue and try again, or run:" >&2' \
+	  '        echo "    make scan-secrets" >&2' \
+	  '        echo "  to see full details." >&2' \
+	  '        exit 1' \
+	  '    fi' \
+	  'else' \
+	  '    echo "Warning: gitleaks not available, skipping pre-commit secret scan" >&2' \
+	  '    echo "  Install via mise: mise install" >&2' \
+	  'fi' \
+	  '' \
+	  '# --- bd (beads): export database to JSONL and stage ---' \
+	  'if ! command -v bd >/dev/null 2>&1; then' \
+	  '    echo "Warning: bd command not found in PATH, skipping beads pre-commit" >&2' \
+	  '    echo "  Install bd: brew install steveyegge/tap/bd" >&2' \
+	  '    echo "  Or add bd to your PATH" >&2' \
+	  '    exit 0' \
+	  'fi' \
+	  '' \
+	  'exec bd hook pre-commit "$$@"' \
+	  > .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Done. Pre-commit hook installed at .git/hooks/pre-commit"
 
 ## verify-hooks: Prove two-tier logging, context bundles, and recall work end-to-end
 verify-hooks:
