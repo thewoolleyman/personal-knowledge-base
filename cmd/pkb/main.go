@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/apiclient"
 	"github.com/cwoolley/personal-knowledge-base/internal/auth"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
@@ -87,6 +88,47 @@ func truncateSnippet(s string) string {
 	return s[:maxLen-3] + "..."
 }
 
+// searchHandler returns an http.Handler for the /search endpoint.
+func searchHandler(searchFn SearchFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
+			return
+		}
+		var sources []string
+		if s := r.URL.Query().Get("sources"); s != "" {
+			sources = strings.Split(s, ",")
+		}
+		results, err := searchFn(r.Context(), q, sources)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
+	})
+}
+
+// startEmbeddedServer starts a server on :0 with the search handler and
+// returns an apiclient pointed at it plus a cleanup function.
+var startEmbeddedServer = func(searchFn SearchFunc) (*apiclient.Client, func(), error) {
+	srv := server.New(":0")
+	srv.Handle("GET /search", searchHandler(searchFn))
+	if err := srv.Listen(); err != nil {
+		return nil, nil, fmt.Errorf("start embedded server: %w", err)
+	}
+	go srv.Serve() //nolint:errcheck // shutdown handles cleanup
+	baseURL := "http://" + srv.Addr()
+	client := apiclient.New(baseURL, http.DefaultClient)
+	cleanup := func() { srv.Shutdown(context.Background()) }
+	return client, cleanup, nil
+}
+
 func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pkb",
@@ -98,8 +140,14 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Short: "Search across all connected services",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			client, cleanup, err := startEmbeddedServer(searchFn)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
 			query := strings.Join(args, " ")
-			results, err := searchFn(cmd.Context(), query, nil)
+			results, err := client.Search(cmd.Context(), query, nil)
 			if err != nil {
 				return err
 			}
@@ -126,29 +174,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr, _ := cmd.Flags().GetString("addr")
 			srv := server.New(addr)
-
-			srv.Handle("GET /search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				q := r.URL.Query().Get("q")
-				if q == "" {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusBadRequest)
-					_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
-					return
-				}
-				var sources []string
-				if s := r.URL.Query().Get("sources"); s != "" {
-					sources = strings.Split(s, ",")
-				}
-				results, err := searchFn(r.Context(), q, sources)
-				if err != nil {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusInternalServerError)
-					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(results)
-			}))
+			srv.Handle("GET /search", searchHandler(searchFn))
 
 			if err := srv.Listen(); err != nil {
 				return err
