@@ -39,6 +39,7 @@ All consumers (CLI, TUI, web UI) go through the same HTTP API. The `search` and 
 | `internal/auth` | OAuth2 authorization code flow with local callback server |
 | `internal/config` | Configuration loading from environment variables |
 | `internal/tui` | Interactive Bubble Tea TUI for search |
+| `internal/web` | Embedded web UI (HTML/JS/CSS) served from the Go binary |
 
 ### Current connectors
 
@@ -94,7 +95,7 @@ make build
 ./pkb search "meeting notes"
 ```
 
-### HTTP API server
+### HTTP API server + web UI
 
 ```bash
 make build
@@ -102,7 +103,12 @@ make build
 ./pkb serve --addr :3000 # custom port
 ```
 
+Then open `http://localhost:8080` in your browser for the web UI.
+
+The web UI provides a search box and source selector checkboxes. Gmail is off by default (too noisy for general search). Check the sources you want and search.
+
 Endpoints:
+- `GET /` — web UI (HTML)
 - `GET /health` — returns 200 OK
 - `GET /search?q=<query>` — returns JSON array of results
 - `GET /search?q=<query>&sources=gdrive` — filter to specific connectors (comma-separated)
