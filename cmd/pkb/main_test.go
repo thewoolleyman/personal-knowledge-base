@@ -197,6 +197,48 @@ func TestSearchCommand_Error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSearchCommand_SourcesFlag_PassesSingleSource(t *testing.T) {
+	var receivedSources []string
+	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
+		receivedSources = sources
+		return []connectors.Result{
+			{Title: "Test", URL: "https://example.com", Source: "gdrive"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "--sources", "gdrive", "test query"}, mockSearch, &buf)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"gdrive"}, receivedSources)
+}
+
+func TestSearchCommand_SourcesFlag_PassesMultipleSources(t *testing.T) {
+	var receivedSources []string
+	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
+		receivedSources = sources
+		return []connectors.Result{
+			{Title: "Test", URL: "https://example.com", Source: "gdrive"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "--sources", "gdrive,gmail", "test query"}, mockSearch, &buf)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"gdrive", "gmail"}, receivedSources)
+}
+
+func TestSearchCommand_SourcesFlag_OmittedPassesNil(t *testing.T) {
+	var receivedSources []string
+	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
+		receivedSources = sources
+		return []connectors.Result{
+			{Title: "Test", URL: "https://example.com", Source: "mock"},
+		}, nil
+	}
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test query"}, mockSearch, &buf)
+	assert.NoError(t, err)
+	assert.Nil(t, receivedSources)
+}
+
 // BUG-008: buildSearchFn uses config.Load() instead of inline os.Getenv.
 func TestBuildSearchFn_UsesConfig(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
