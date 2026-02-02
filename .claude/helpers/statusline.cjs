@@ -68,7 +68,7 @@ const c = {
 function getUserInfo() {
   let name = 'user';
   let gitBranch = '';
-  let modelName = 'Unknown';
+  let modelName = 'Model unknown (no usage yet)';
 
   try {
     const gitUserCmd = isWindows
@@ -91,22 +91,29 @@ function getUserInfo() {
     if (fs.existsSync(claudeConfigPath)) {
       const claudeConfig = JSON.parse(fs.readFileSync(claudeConfigPath, 'utf-8'));
       // Try to find lastModelUsage - prefer most specific (longest) matching path
+      // But fall back to parent paths if the specific project has no model usage
       let lastModelUsage = null;
       const cwd = process.cwd();
       if (claudeConfig.projects) {
-        // Find all matching paths and pick the longest one (most specific)
-        let bestMatch = null;
-        let bestMatchLength = 0;
+        // Find all matching paths, sorted by specificity (longest first)
+        const matchingPaths = [];
         for (const [projectPath, projectConfig] of Object.entries(claudeConfig.projects)) {
           if (cwd === projectPath || cwd.startsWith(projectPath + '/')) {
-            if (projectPath.length > bestMatchLength) {
-              bestMatch = projectConfig;
-              bestMatchLength = projectPath.length;
-            }
+            matchingPaths.push({ path: projectPath, config: projectConfig, length: projectPath.length });
           }
         }
-        if (bestMatch) {
-          lastModelUsage = bestMatch.lastModelUsage;
+        // Sort by length descending (most specific first)
+        matchingPaths.sort((a, b) => b.length - a.length);
+
+        // Try each path from most specific to least specific, use first with model usage data
+        for (const match of matchingPaths) {
+          if (match.config.lastModelUsage) {
+            const modelIds = Object.keys(match.config.lastModelUsage);
+            if (modelIds.length > 0) {
+              lastModelUsage = match.config.lastModelUsage;
+              break;
+            }
+          }
         }
       }
       if (lastModelUsage) {
@@ -137,10 +144,11 @@ function getUserInfo() {
           else if (modelId.includes('haiku')) modelName = 'Haiku 4.5';
           else modelName = modelId.split('-').slice(1, 3).join(' ');
         }
+        // If no model usage found, leave as "Model unknown (no usage yet)"
       }
     }
   } catch (e) {
-    // Fallback to Unknown if can't read config
+    // Leave as "Model unknown (no usage yet)" if can't read config
   }
 
   return { name, gitBranch, modelName };
