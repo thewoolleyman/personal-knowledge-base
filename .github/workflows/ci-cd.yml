@@ -141,6 +141,68 @@ jobs:
           fi
           make test-live
 
+  e2e-tests:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, acceptance-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build pkb binary
+        run: make build
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright dependencies
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Write OAuth token file
+        env:
+          PKB_TOKEN_JSON: ${{ secrets.PKB_TOKEN_JSON }}
+        run: |
+          if [ -z "$PKB_TOKEN_JSON" ]; then
+            echo "PKB_TOKEN_JSON secret not set, skipping E2E tests"
+            exit 0
+          fi
+          mkdir -p ~/.config/pkb
+          echo "$PKB_TOKEN_JSON" > ~/.config/pkb/token.json
+
+      - name: Run Playwright E2E tests
+        working-directory: tests/e2e
+        env:
+          PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
+          PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
+          PKB_TOKEN_PATH: ~/.config/pkb/token.json
+          PKB_BINARY: ../../pkb
+          PKB_PORT: "8090"
+        run: |
+          if [ -z "$PKB_GOOGLE_CLIENT_ID" ]; then
+            echo "Google credentials not configured, skipping E2E tests"
+            exit 0
+          fi
+          npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7
+
   # =============================================================================
   # Stage 3: Release - Auto-release on push to main, skip if version exists
   # =============================================================================

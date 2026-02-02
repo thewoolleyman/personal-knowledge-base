@@ -22,6 +22,11 @@ cache/
 *.pfx
 *.jks
 
+# Playwright / Node.js
+node_modules/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+
 # bv (beads viewer) local config and caches
 .bv/
 .beads/export-state/

@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-live test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve
+.PHONY: help build test test-accept test-int test-live test-e2e test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve
 
 BINARY := pkb
 BUILD_DIR := .
@@ -34,6 +34,10 @@ test-int:
 ## test-live: Run live API tests (requires real Google credentials and token)
 test-live:
 	go test -tags=live -v -timeout=60s ./tests/live/
+
+## test-e2e: Run Playwright E2E tests for the web UI (requires credentials + Playwright)
+test-e2e: build
+	cd tests/e2e && npx playwright test
 
 ## test-all: Run unit, acceptance, and integration tests
 test-all: test test-accept test-int
