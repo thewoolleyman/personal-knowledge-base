@@ -66,17 +66,17 @@ func runPKB(t *testing.T, binary string, args ...string) (stdout, stderr string,
 	return outBuf.String(), errBuf.String(), exitCode
 }
 
-func skipUnlessCredentials(t *testing.T) {
+func requireCredentials(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"PKB_GOOGLE_CLIENT_ID", "PKB_GOOGLE_CLIENT_SECRET"} {
 		if os.Getenv(key) == "" {
-			t.Skipf("skipping: %s not set", key)
+			t.Fatalf("FAIL: required environment variable %s is not set", key)
 		}
 	}
 }
 
 func TestLive_CLISearch_GoogleDrive(t *testing.T) {
-	skipUnlessCredentials(t)
+	requireCredentials(t)
 	binary := buildBinary(t)
 
 	stdout, stderr, exitCode := runPKB(t, binary, "search", testQuery)
@@ -92,7 +92,7 @@ func TestLive_CLISearch_GoogleDrive(t *testing.T) {
 }
 
 func TestLive_CLISearch_Gmail(t *testing.T) {
-	skipUnlessCredentials(t)
+	requireCredentials(t)
 	binary := buildBinary(t)
 
 	stdout, stderr, exitCode := runPKB(t, binary, "search", testQuery)
@@ -108,7 +108,7 @@ func TestLive_CLISearch_Gmail(t *testing.T) {
 }
 
 func TestLive_CLISearch_SourceFilter_GDriveOnly(t *testing.T) {
-	skipUnlessCredentials(t)
+	requireCredentials(t)
 	binary := buildBinary(t)
 
 	// Search with --sources not available on CLI yet, so search via serve endpoint.
@@ -132,7 +132,7 @@ func TestLive_CLISearch_SourceFilter_GDriveOnly(t *testing.T) {
 }
 
 func TestLive_CLISearch_SourceFilter_GmailOnly(t *testing.T) {
-	skipUnlessCredentials(t)
+	requireCredentials(t)
 	binary := buildBinary(t)
 
 	stdout, stderr, exitCode := runPKB(t, binary, "search", testQuery)
@@ -152,7 +152,7 @@ func TestLive_CLISearch_SourceFilter_GmailOnly(t *testing.T) {
 }
 
 func TestLive_ServeSearch_BothSources(t *testing.T) {
-	skipUnlessCredentials(t)
+	requireCredentials(t)
 	binary := buildBinary(t)
 
 	// Use the serve command's search endpoint via the embedded server in CLI.
