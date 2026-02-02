@@ -190,9 +190,18 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Short:   "Launch the interactive TUI",
 		Aliases: []string{"tui"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model := tui.NewModel(tui.SearchFunc(searchFn))
+			client, cleanup, err := startEmbeddedServer(searchFn)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			apiSearch := tui.SearchFunc(func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
+				return client.Search(ctx, query, sources)
+			})
+			model := tui.NewModel(apiSearch)
 			p := newTeaProgram(model)
-			_, err := p.Run()
+			_, err = p.Run()
 			return err
 		},
 	}
