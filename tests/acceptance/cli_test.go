@@ -324,6 +324,58 @@ func TestAcceptance_ServeSearchEndpoint_SourceFiltering(t *testing.T) {
 	assert.True(t, json.Valid(body), "Response should be valid JSON, got: %s", string(body))
 }
 
+func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
+	binary := buildBinary(t)
+
+	cmd := exec.Command(binary, "serve", "--addr", "127.0.0.1:0")
+	cmd.Env = []string{"HOME=" + t.TempDir()}
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	cmd.Stderr = cmd.Stdout
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	})
+
+	scanner := bufio.NewScanner(stdout)
+	var addr string
+	deadline := time.After(10 * time.Second)
+	addrCh := make(chan string, 1)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Listening on ") {
+				addrCh <- strings.TrimPrefix(line, "Listening on ")
+				return
+			}
+		}
+	}()
+
+	select {
+	case addr = <-addrCh:
+	case <-deadline:
+		t.Fatal("timeout waiting for server to start")
+	}
+
+	baseURL := "http://" + addr
+
+	// GET / should return the web UI HTML
+	resp, err := http.Get(baseURL + "/")
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(body)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, html, "<html", "should serve HTML page")
+	assert.Contains(t, html, "Search", "should contain search UI")
+	assert.Contains(t, html, "gdrive", "should have gdrive checkbox")
+	assert.Contains(t, html, "gmail", "should have gmail checkbox")
+}
+
 func TestAcceptance_SearchWithCredentials_ReturnsResults(t *testing.T) {
 	// This test requires real Google Drive credentials.
 	// Skip if not configured.
