@@ -64,3 +64,35 @@ func (e *Engine) Search(ctx context.Context, query string) ([]connectors.Result,
 
 	return all, nil
 }
+
+// SearchWithSources queries only the named connectors. If sources is nil or
+// empty, all connectors are queried (same as Search).
+func (e *Engine) SearchWithSources(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
+	if len(sources) == 0 {
+		return e.Search(ctx, query)
+	}
+
+	allowed := make(map[string]bool, len(sources))
+	for _, s := range sources {
+		allowed[s] = true
+	}
+
+	var filtered []connectors.Connector
+	for _, c := range e.connectors {
+		if allowed[c.Name()] {
+			filtered = append(filtered, c)
+		}
+	}
+
+	sub := &Engine{connectors: filtered}
+	return sub.Search(ctx, query)
+}
+
+// ConnectorNames returns the names of all registered connectors.
+func (e *Engine) ConnectorNames() []string {
+	names := make([]string, len(e.connectors))
+	for i, c := range e.connectors {
+		names[i] = c.Name()
+	}
+	return names
+}

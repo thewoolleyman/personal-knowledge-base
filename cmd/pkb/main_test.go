@@ -55,7 +55,7 @@ func (sb *syncBuffer) Len() int {
 // ensure syncBuffer satisfies io.Writer.
 var _ io.Writer = (*syncBuffer)(nil)
 
-func noopSearch(_ context.Context, _ string) ([]connectors.Result, error) {
+func noopSearch(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 	return nil, nil
 }
 
@@ -79,7 +79,7 @@ func TestTruncateSnippet(t *testing.T) {
 }
 
 func TestSearchCommand_PrintsSnippet(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{
 			{Title: "Doc", Snippet: "This is the snippet text", URL: "https://example.com", Source: "mock"},
 		}, nil
@@ -92,7 +92,7 @@ func TestSearchCommand_PrintsSnippet(t *testing.T) {
 }
 
 func TestSearchCommand_OmitsEmptySnippet(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{
 			{Title: "Doc", Snippet: "", URL: "https://example.com", Source: "mock"},
 		}, nil
@@ -108,7 +108,7 @@ func TestSearchCommand_OmitsEmptySnippet(t *testing.T) {
 
 func TestSearchCommand_TruncatesLongSnippet(t *testing.T) {
 	long := strings.Repeat("z", 200)
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{
 			{Title: "Doc", Snippet: long, URL: "https://example.com", Source: "mock"},
 		}, nil
@@ -127,7 +127,7 @@ func TestRun_ReturnsNilOnSuccess(t *testing.T) {
 }
 
 func TestSearchCommand_PrintsResults(t *testing.T) {
-	mockSearch := func(_ context.Context, query string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, query string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{
 			{Title: "Test Doc", URL: "https://example.com/doc", Source: "mock"},
 			{Title: "Another Doc", URL: "https://example.com/doc2", Source: "mock"},
@@ -151,7 +151,7 @@ func TestSearchCommand_NoQuery(t *testing.T) {
 
 // BUG-011: Test the "no results" output path.
 func TestSearchCommand_NoResults(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{}, nil
 	}
 	var buf bytes.Buffer
@@ -162,7 +162,7 @@ func TestSearchCommand_NoResults(t *testing.T) {
 
 // BUG-011: Test the search error path.
 func TestSearchCommand_Error(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return nil, fmt.Errorf("connection failed")
 	}
 	var buf bytes.Buffer
@@ -176,14 +176,14 @@ func TestBuildSearchFn_UsesConfig(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
 
 	fn := buildSearchFn()
-	_, err := fn(context.Background(), "test")
+	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
 }
 
 // BUG-009: The "serve" subcommand is registered and accepts --addr.
 func TestServeCommand_IsRegistered(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return nil, nil
 	}
 	var buf bytes.Buffer
@@ -202,7 +202,7 @@ func TestServeCommand_IsRegistered(t *testing.T) {
 
 // BUG-010: The "interactive" subcommand is registered with alias "tui".
 func TestInteractiveCommand_IsRegistered(t *testing.T) {
-	mockSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return nil, nil
 	}
 	var buf bytes.Buffer
@@ -289,7 +289,7 @@ func TestBuildSearchFn_PropagatesConfigError(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
 
 	fn := buildSearchFn()
-	_, err := fn(context.Background(), "test")
+	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
 }
@@ -302,7 +302,7 @@ func TestBuildSearchFn_ConfigLoadError(t *testing.T) {
 	t.Cleanup(func() { loadConfig = orig })
 
 	fn := buildSearchFn()
-	_, err := fn(context.Background(), "test")
+	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load config")
 }
@@ -313,7 +313,7 @@ func TestBuildSearchFn_TokenLoadError(t *testing.T) {
 	t.Setenv("PKB_TOKEN_PATH", "/nonexistent/path/token.json")
 
 	fn := buildSearchFn()
-	_, err := fn(context.Background(), "test")
+	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load OAuth token")
 }
@@ -336,7 +336,7 @@ func TestBuildSearchFn_APIClientError(t *testing.T) {
 	t.Cleanup(func() { newAPIClient = orig })
 
 	fn := buildSearchFn()
-	_, err = fn(context.Background(), "test")
+	_, err = fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create Google Drive client")
 }
@@ -355,7 +355,7 @@ func TestBuildSearchFn_SuccessPath(t *testing.T) {
 	fn := buildSearchFn()
 	// The closure creates a real Drive client. The search call will fail
 	// because there's no real API, but all lines in buildSearchFn are exercised.
-	_, err = fn(context.Background(), "test")
+	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err)
 }
 
@@ -552,7 +552,7 @@ func TestServeSearch_WithQuery_ReturnsJSON(t *testing.T) {
 	}
 	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
 
-	mockSearch := func(_ context.Context, query string) ([]connectors.Result, error) {
+	mockSearch := func(_ context.Context, query string, _ []string) ([]connectors.Result, error) {
 		return []connectors.Result{
 			{Title: "API Doc", URL: "https://example.com/api", Source: "mock"},
 		}, nil
@@ -588,6 +588,84 @@ func TestServeSearch_WithQuery_ReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestServeSearch_WithSources_PassesThroughFilter(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	var capturedSources []string
+	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
+		capturedSources = sources
+		return []connectors.Result{
+			{Title: "Filtered", Source: "gdrive"},
+		}, nil
+	}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, mockSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/search?q=test&sources=gdrive")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, []string{"gdrive"}, capturedSources)
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
+func TestServeSearch_WithoutSources_PassesNil(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	sourcesCalled := false
+	var capturedSources []string
+	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
+		sourcesCalled = true
+		capturedSources = sources
+		return []connectors.Result{}, nil
+	}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, mockSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	resp, err := http.Get("http://" + addr + "/search?q=test")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.True(t, sourcesCalled)
+	assert.Nil(t, capturedSources, "sources should be nil when not provided")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for serve to shut down")
+	}
+}
+
 func TestServeSearch_SearchError_Returns500(t *testing.T) {
 	testCh := make(chan os.Signal, 1)
 	origMakeSignalCh := makeSignalCh
@@ -596,7 +674,7 @@ func TestServeSearch_SearchError_Returns500(t *testing.T) {
 	}
 	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
 
-	failSearch := func(_ context.Context, _ string) ([]connectors.Result, error) {
+	failSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return nil, fmt.Errorf("search engine exploded")
 	}
 
@@ -647,7 +725,7 @@ func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
 	fn := buildSearchFn()
 	// Should still work (falls back to Drive only), though Drive search will fail
 	// because there's no real API. The point is it didn't crash from Gmail error.
-	_, err = fn(context.Background(), "test")
+	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err)
 }
 

@@ -95,3 +95,87 @@ func TestEngine_Search_AllFail(t *testing.T) {
 	assert.Error(t, err)
 	assert.Empty(t, results)
 }
+
+func TestEngine_SearchWithSources_FiltersConnectors(t *testing.T) {
+	drive := new(MockConnector)
+	drive.On("Name").Return("gdrive")
+	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
+		{Title: "Drive Doc", Source: "gdrive"},
+	}, nil)
+
+	gm := new(MockConnector)
+	gm.On("Name").Return("gmail")
+	// gmail.Search should NOT be called
+
+	engine := New(drive, gm)
+	results, err := engine.SearchWithSources(context.Background(), "q", []string{"gdrive"})
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "Drive Doc", results[0].Title)
+	drive.AssertExpectations(t)
+	gm.AssertNotCalled(t, "Search", mock.Anything, mock.Anything)
+}
+
+func TestEngine_SearchWithSources_NilSearchesAll(t *testing.T) {
+	drive := new(MockConnector)
+	drive.On("Name").Return("gdrive")
+	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
+		{Title: "Drive Doc", Source: "gdrive"},
+	}, nil)
+
+	gm := new(MockConnector)
+	gm.On("Name").Return("gmail")
+	gm.On("Search", mock.Anything, "q").Return([]connectors.Result{
+		{Title: "Email", Source: "gmail"},
+	}, nil)
+
+	engine := New(drive, gm)
+	results, err := engine.SearchWithSources(context.Background(), "q", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestEngine_SearchWithSources_EmptySearchesAll(t *testing.T) {
+	drive := new(MockConnector)
+	drive.On("Name").Return("gdrive")
+	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
+		{Title: "Drive Doc", Source: "gdrive"},
+	}, nil)
+
+	engine := New(drive)
+	results, err := engine.SearchWithSources(context.Background(), "q", []string{})
+
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+}
+
+func TestEngine_SearchWithSources_UnknownSourceIgnored(t *testing.T) {
+	drive := new(MockConnector)
+	drive.On("Name").Return("gdrive")
+	// drive.Search should NOT be called since "nonexistent" doesn't match
+
+	engine := New(drive)
+	results, err := engine.SearchWithSources(context.Background(), "q", []string{"nonexistent"})
+
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+func TestEngine_ConnectorNames(t *testing.T) {
+	drive := new(MockConnector)
+	drive.On("Name").Return("gdrive")
+	gm := new(MockConnector)
+	gm.On("Name").Return("gmail")
+
+	engine := New(drive, gm)
+	names := engine.ConnectorNames()
+	assert.ElementsMatch(t, []string{"gdrive", "gmail"}, names)
+}
+
+func TestEngine_ConnectorNames_Empty(t *testing.T) {
+	engine := New()
+	names := engine.ConnectorNames()
+	assert.Empty(t, names)
+}

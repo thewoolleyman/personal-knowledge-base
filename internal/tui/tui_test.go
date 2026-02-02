@@ -13,7 +13,7 @@ import (
 )
 
 func mockSearchFn(results []connectors.Result, err error) SearchFunc {
-	return func(_ context.Context, _ string) ([]connectors.Result, error) {
+	return func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 		return results, err
 	}
 }
@@ -119,7 +119,7 @@ func TestModel_View_ResultsStatusBar_NoEnterOpen(t *testing.T) {
 
 func TestModel_DoSearch_SetsCancelFunc(t *testing.T) {
 	searchCalled := make(chan context.Context, 1)
-	m := NewModel(func(ctx context.Context, query string) ([]connectors.Result, error) {
+	m := NewModel(func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
 		searchCalled <- ctx
 		return nil, nil
 	})
@@ -143,7 +143,7 @@ func TestModel_DoSearch_SetsCancelFunc(t *testing.T) {
 
 func TestModel_EscapeDuringLoading_CancelsContext(t *testing.T) {
 	searchCalled := make(chan context.Context, 1)
-	m := NewModel(func(ctx context.Context, query string) ([]connectors.Result, error) {
+	m := NewModel(func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
 		searchCalled <- ctx
 		<-ctx.Done()
 		return nil, ctx.Err()

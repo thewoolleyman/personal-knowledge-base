@@ -76,7 +76,8 @@ type httpServer interface {
 }
 
 // SearchFunc abstracts the search operation for testability.
-type SearchFunc func(ctx context.Context, query string) ([]connectors.Result, error)
+// sources filters which connectors to query; nil means all.
+type SearchFunc func(ctx context.Context, query string, sources []string) ([]connectors.Result, error)
 
 func truncateSnippet(s string) string {
 	const maxLen = 80
@@ -98,7 +99,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
-			results, err := searchFn(cmd.Context(), query)
+			results, err := searchFn(cmd.Context(), query, nil)
 			if err != nil {
 				return err
 			}
@@ -134,7 +135,11 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 					_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing required parameter: q"})
 					return
 				}
-				results, err := searchFn(r.Context(), q)
+				var sources []string
+				if s := r.URL.Query().Get("sources"); s != "" {
+					sources = strings.Split(s, ",")
+				}
+				results, err := searchFn(r.Context(), q, sources)
 				if err != nil {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
@@ -239,13 +244,13 @@ func run(args []string, searchFn SearchFunc) error {
 func buildSearchFn() SearchFunc {
 	appCfg, err := loadConfig()
 	if err != nil {
-		return func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 	}
 
 	if appCfg.GoogleClientID == "" || appCfg.GoogleClientSecret == "" {
-		return func(_ context.Context, _ string) ([]connectors.Result, error) {
+		return func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("Google Drive credentials not configured.\n\n" +
 				"Set these environment variables:\n" +
 				"  export PKB_GOOGLE_CLIENT_ID=\"your-client-id\"\n" +
@@ -254,7 +259,7 @@ func buildSearchFn() SearchFunc {
 		}
 	}
 
-	return func(ctx context.Context, query string) ([]connectors.Result, error) {
+	return func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
 		oauthCfg := &oauth2.Config{
 			ClientID:     appCfg.GoogleClientID,
 			ClientSecret: appCfg.GoogleClientSecret,
@@ -280,12 +285,12 @@ func buildSearchFn() SearchFunc {
 		if err != nil {
 			// Gmail is optional — fall back to Drive only.
 			engine := search.New(driveConnector)
-			return engine.Search(ctx, query)
+			return engine.SearchWithSources(ctx, query, sources)
 		}
 		gmailConnector := gmail.NewConnector(gmailClient)
 
 		engine := search.New(driveConnector, gmailConnector)
-		return engine.Search(ctx, query)
+		return engine.SearchWithSources(ctx, query, sources)
 	}
 }
 

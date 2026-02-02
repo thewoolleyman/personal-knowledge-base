@@ -12,7 +12,8 @@ import (
 )
 
 // SearchFunc is the function signature for performing a search.
-type SearchFunc func(ctx context.Context, query string) ([]connectors.Result, error)
+// sources filters which connectors to query; nil means all.
+type SearchFunc func(ctx context.Context, query string, sources []string) ([]connectors.Result, error)
 
 type state int
 
@@ -144,7 +145,7 @@ func (m Model) handleSearchResult(msg searchResultMsg) (tea.Model, tea.Cmd) {
 func (m Model) doSearch(ctx context.Context, query string) tea.Cmd {
 	searchFn := m.searchFn
 	return func() tea.Msg {
-		results, err := searchFn(ctx, query)
+		results, err := searchFn(ctx, query, nil)
 		return searchResultMsg{results: results, err: err}
 	}
 }
