@@ -112,6 +112,26 @@ func TestSearch_InvalidJSON(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSearch_InvalidBaseURL(t *testing.T) {
+	c := New("://bad\x00url", http.DefaultClient)
+	_, err := c.Search(context.Background(), "q", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create request")
+}
+
+func TestSearch_NonJSONErrorResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, srv.Client())
+	_, err := c.Search(context.Background(), "q", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "server returned 500")
+}
+
 func TestSearch_ContextCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()

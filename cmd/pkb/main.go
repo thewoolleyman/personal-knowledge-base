@@ -198,9 +198,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			}
 			defer cleanup()
 
-			apiSearch := tui.SearchFunc(func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
-				return client.Search(ctx, query, sources)
-			})
+			apiSearch := tui.SearchFunc(client.Search)
 			model := tui.NewModel(apiSearch)
 			p := newTeaProgram(model)
 			_, err = p.Run()

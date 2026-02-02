@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
@@ -25,22 +24,17 @@ func New(baseURL string, httpClient *http.Client) *Client {
 // Search queries the /search endpoint and returns results.
 // If sources is non-nil, only those connectors are queried.
 func (c *Client) Search(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
-	u, err := url.Parse(c.baseURL + "/search")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/search", nil)
 	if err != nil {
-		return nil, fmt.Errorf("parse URL: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	params := u.Query()
+	params := req.URL.Query()
 	params.Set("q", query)
 	if len(sources) > 0 {
 		params.Set("sources", strings.Join(sources, ","))
 	}
-	u.RawQuery = params.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
+	req.URL.RawQuery = params.Encode()
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

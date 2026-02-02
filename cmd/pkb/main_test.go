@@ -19,6 +19,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cwoolley/personal-knowledge-base/internal/apiclient"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
@@ -76,6 +77,32 @@ func TestTruncateSnippet(t *testing.T) {
 			assert.Equal(t, tt.want, truncateSnippet(tt.input))
 		})
 	}
+}
+
+func TestSearchCommand_EmbeddedServerError(t *testing.T) {
+	orig := startEmbeddedServer
+	startEmbeddedServer = func(_ SearchFunc) (*apiclient.Client, func(), error) {
+		return nil, nil, fmt.Errorf("listen failed")
+	}
+	t.Cleanup(func() { startEmbeddedServer = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"search", "test"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "listen failed")
+}
+
+func TestInteractiveCommand_EmbeddedServerError(t *testing.T) {
+	orig := startEmbeddedServer
+	startEmbeddedServer = func(_ SearchFunc) (*apiclient.Client, func(), error) {
+		return nil, nil, fmt.Errorf("listen failed")
+	}
+	t.Cleanup(func() { startEmbeddedServer = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"interactive"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "listen failed")
 }
 
 func TestSearchCommand_PrintsSnippet(t *testing.T) {
