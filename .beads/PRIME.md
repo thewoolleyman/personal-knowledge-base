@@ -62,6 +62,29 @@ Search memory FIRST — don't reinvent approaches that already worked.
 - NEVER use `--no-verify` to skip pre-commit hooks
 - Pipeline auto-creates a P0 bug bead on main-branch failures -- check `bd ready` to see them
 
+## Epic Completion Protocol
+
+**Before running `bd close <epic-id>`:**
+
+1. Check epic type:
+   - Feature/Enhancement with user-facing changes? → Requires acceptance tests
+   - Bug fix for user-reported issue? → Requires acceptance test
+   - Internal refactor with no user changes? → Unit tests sufficient
+
+2. For user-facing epics:
+   - [ ] Run: `make test-accept`
+   - [ ] All tests pass
+   - [ ] New functionality has test coverage
+   - [ ] Tests verify from user perspective (black box)
+   - [ ] Reference: `.beads/templates/EPIC_COMPLETION_CHECKLIST.md`
+
+3. For all epics:
+   - [ ] CI green
+   - [ ] All child beads closed
+   - [ ] Documentation updated
+
+**Agents: DO NOT close epics without this verification!**
+
 ## Essential Commands
 
 ### Finding Work

@@ -187,6 +187,8 @@ Follow TDD (see CLAUDE.md). Write failing test, make it pass, refactor.
 
 ### Completing work
 
+Before closing an epic, follow the Epic Completion Checklist below.
+
 ```bash
 bd close <id>               # Mark bead done
 
@@ -199,6 +201,44 @@ npx @claude-flow/cli@latest memory store \
 bd sync                     # Push beads state to git
 git add <files> && git commit -m "..." && git push
 ```
+
+## Epic Completion Checklist
+
+Before closing an epic with `bd close <id>`, verify:
+
+### For ALL Epics:
+- [ ] All child beads are closed
+- [ ] No blocking dependencies remain
+- [ ] CI is green on main
+- [ ] Code is merged and deployed
+- [ ] Documentation updated
+
+### For User-Facing Features (MANDATORY):
+- [ ] **Acceptance tests exist** (see Testing Pyramid in CLAUDE.md)
+- [ ] Tests build real binary as subprocess
+- [ ] Tests verify from user's perspective (black box)
+- [ ] Tests mirror README examples
+- [ ] Run `make test-accept` - all pass
+- [ ] Manual verification: follow README steps yourself
+
+### For Internal Refactors:
+- [ ] Unit tests updated
+- [ ] Integration tests if needed
+- [ ] No user-facing behavior changed
+- [ ] Performance benchmarks if applicable
+
+### Red Flags That Require Acceptance Tests:
+- Added new CLI command or flag
+- Added new HTTP endpoint
+- Changed CLI output format
+- Modified error messages users see
+- Updated README with new examples
+- Fixed a bug a user reported
+
+**If you can't write acceptance tests yet:**
+1. File a blocker bead explaining why
+2. Update epic description with blocker details
+3. DO NOT close epic until blocker resolved
 
 ### Session close checklist
 

@@ -782,6 +782,34 @@ verify that the software is usable from a human's perspective.
 - New CLI command or user-facing behavior → acceptance test
 - Updating the README with new instructions → acceptance test that mirrors those instructions
 
+### 🚨 EPIC COMPLETION REQUIREMENTS
+
+**MANDATORY: Before closing ANY epic that adds or modifies user-facing functionality:**
+
+1. **Acceptance Test Checklist:**
+   - [ ] Acceptance tests exist for ALL new CLI commands
+   - [ ] Acceptance tests exist for ALL new HTTP endpoints
+   - [ ] Acceptance tests exist for ALL new UI features
+   - [ ] Tests build real binary and execute as subprocess
+   - [ ] Tests check stdout/stderr/exit codes (black box)
+   - [ ] Tests NEVER import internal packages
+   - [ ] Tests mirror what README instructs users to do
+
+2. **Test Coverage Verification:**
+   - [ ] Run: `go test -tags=acceptance -v ./tests/acceptance/`
+   - [ ] All new functionality tests pass
+   - [ ] Tests would catch regression if functionality broke
+
+3. **Documentation Alignment:**
+   - [ ] Every README example has corresponding acceptance test
+   - [ ] Test names reference README sections
+   - [ ] Failure messages guide users to documentation
+
+**THE RULE:**
+> If a human follows the README and gets an error, an acceptance test MUST exist that would have caught it before merge.
+
+**NO EXCEPTIONS:** Epics cannot be closed without these checks. If acceptance tests are blocked by external dependencies, file a blocker bead.
+
 ### Makefile (MANDATORY)
 
 All developer-facing commands live in the `Makefile`. Run `make help` to discover them.
