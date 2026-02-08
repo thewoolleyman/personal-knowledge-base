@@ -12,6 +12,7 @@ title = "pkb gitleaks config"
   # Commits to ignore: CI bead testing commits with deliberate fake secrets
   commits = [
     "0f1135b583c85ba9b55d1d6a4970d6f83ee63021",
+    "5eca8dde6653b2e0709d9956a60e58e4742378da",
   ]
 
   # Paths to ignore: gitignored dirs, example files, agent definitions (contain
