@@ -825,12 +825,13 @@ Rules:
 
 **CI must be green.** This is non-negotiable:
 1. NEVER push while CI is red on main (check: `gh run list --limit=1`)
-2. If CI fails after your push, fix it before starting new work
-3. If failure is infra/external (not your code), ask the human to verify
-4. The human may allow temporary skip -- but YOU must ask, never assume
-5. NEVER use `git commit --no-verify` to skip pre-commit hooks
-6. All linting tools (golangci-lint, gitleaks, go vet) belong in the SINGLE ci-cd.yml pipeline -- never create standalone workflow files for linting
-7. The pipeline auto-creates a P0 bug bead on any unexpected failure on main -- agents will see it on next `bd sync` and must fix it before starting new work
+2. **AFTER EVERY PUSH: Wait for CI and verify it passes.** Run `gh run watch` to monitor the triggered pipeline. Do NOT mark work as complete until CI is green. If `gh run watch` is unavailable, poll with `gh run list --branch main --limit=1` until the run completes.
+3. If CI fails after your push, fix it before starting new work
+4. If failure is infra/external (not your code), ask the human to verify
+5. The human may allow temporary skip -- but YOU must ask, never assume
+6. NEVER use `git commit --no-verify` to skip pre-commit hooks
+7. All linting tools (golangci-lint, gitleaks, go vet, actionlint) belong in the SINGLE ci-cd.yml pipeline -- never create standalone workflow files for linting
+8. The pipeline auto-creates a P0 bug bead on any unexpected failure on main -- agents will see it on next `bd sync` and must fix it before starting new work
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
