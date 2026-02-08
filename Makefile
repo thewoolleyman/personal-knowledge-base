@@ -4,6 +4,16 @@ BINARY := pkb
 BUILD_DIR := .
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo dev)
 
+# Cross-platform URL opener: macOS 'open', Linux 'xdg-open', fallback prints URL
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  OPEN_CMD = open
+else ifneq ($(shell command -v xdg-open 2>/dev/null),)
+  OPEN_CMD = xdg-open
+else
+  OPEN_CMD = echo "Open this URL in your browser:"
+endif
+
 ## help: Show this help message
 help:
 	@echo "Usage: make <target>"
@@ -67,13 +77,13 @@ endif
 run: build
 	./$(BINARY) $(RUN_ARGS)
 
-## serve: Build, start the server, and open the web UI in the browser (macOS)
+## serve: Build, start the server, and open the web UI in the browser
 serve: build
-	./$(BINARY) serve & sleep 1 && open http://localhost:8080
+	./$(BINARY) serve & sleep 1 && $(OPEN_CMD) http://localhost:8080
 
-## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser (macOS)
+## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser
 open-cicd-webpage:
-	open https://github.com/thewoolleyman/personal-knowledge-base/actions
+	$(OPEN_CMD) https://github.com/thewoolleyman/personal-knowledge-base/actions
 
 ## scan-secrets: Run gitleaks to detect hardcoded secrets (managed via mise)
 scan-secrets:
