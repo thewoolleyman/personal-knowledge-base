@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-live test-e2e test-all lint vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve
+.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve
 
 BINARY := pkb
 BUILD_DIR := .
@@ -52,9 +52,13 @@ test-e2e: build
 ## test-all: Run unit, acceptance, and integration tests
 test-all: test test-accept test-int
 
-## lint: Run golangci-lint (install with: brew install golangci-lint)
-lint:
+## lint: Run golangci-lint and actionlint
+lint: lint-actions
 	golangci-lint run ./...
+
+## lint-actions: Lint GitHub Actions workflow files (managed via mise)
+lint-actions:
+	mise x -- actionlint
 
 ## vet: Run go vet
 vet:

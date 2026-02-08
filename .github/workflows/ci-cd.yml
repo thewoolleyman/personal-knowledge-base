@@ -35,6 +35,12 @@ jobs:
           version: latest
           install-mode: goinstall
 
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Run actionlint
+        run: mise x -- actionlint
+
   secrets-scan:
     name: Secrets Scan
     runs-on: ubuntu-latest
