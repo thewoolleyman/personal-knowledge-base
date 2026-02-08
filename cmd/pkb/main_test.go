@@ -992,8 +992,3 @@ func TestAuthCommand_SuccessPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fresh-token", loaded.AccessToken)
 }
-
-// INTENTIONAL: break unit tests for CI bead test (pkb-343)
-func TestIntentionalFailure_pkb343(t *testing.T) {
-	t.Fatal("intentional failure to test CI failure bead creation (pkb-343)")
-}

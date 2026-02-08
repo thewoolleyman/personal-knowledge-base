@@ -687,3 +687,8 @@ func TestAcceptance_MakeRunTarget_ExecutesBinary(t *testing.T) {
 	assert.Contains(t, string(output), "pkb version",
 		"make run should execute the binary and show version")
 }
+
+// INTENTIONAL: break acceptance tests for CI bead test (pkb-343)
+func TestIntentionalFailure_pkb343(t *testing.T) {
+	t.Fatal("intentional failure to test CI failure bead creation (pkb-343)")
+}
