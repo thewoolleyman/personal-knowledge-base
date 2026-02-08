@@ -2,11 +2,9 @@ import { test, expect } from "@playwright/test";
 
 const TEST_QUERY = "PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE";
 
-// Fail all tests if credentials are not available.
+// Skip all tests if credentials are not available.
 test.beforeEach(async () => {
-  if (!process.env.PKB_GOOGLE_CLIENT_ID) {
-    throw new Error("FAIL: PKB_GOOGLE_CLIENT_ID is not set");
-  }
+  test.skip(!process.env.PKB_GOOGLE_CLIENT_ID, "PKB_GOOGLE_CLIENT_ID is not set");
 });
 
 test("web UI loads with search form and source checkboxes", async ({
