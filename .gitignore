@@ -36,3 +36,6 @@ tests/e2e/playwright-report/
 
 # Gas Town (added by gt)
 .logs/
+
+# Gas Town (added by gt)
+.claude/
