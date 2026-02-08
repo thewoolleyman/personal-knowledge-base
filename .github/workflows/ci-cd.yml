@@ -336,7 +336,7 @@ jobs:
   notify-failure:
     name: Auto-file CI failure bead
     runs-on: ubuntu-latest
-    needs: [lint, secrets-scan, unit-tests, acceptance-tests, release]
+    needs: [lint, secrets-scan, unit-tests, acceptance-tests, live-tests, e2e-tests, release]
     if: >-
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -345,6 +345,8 @@ jobs:
        needs.secrets-scan.result == 'failure' ||
        needs.unit-tests.result == 'failure' ||
        needs.acceptance-tests.result == 'failure' ||
+       needs.live-tests.result == 'failure' ||
+       needs.e2e-tests.result == 'failure' ||
        needs.release.result == 'failure')
     steps:
       - name: Checkout repository
@@ -362,12 +364,15 @@ jobs:
           if [ "${{ needs.secrets-scan.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}secrets-scan, "; fi
           if [ "${{ needs.unit-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}unit-tests, "; fi
           if [ "${{ needs.acceptance-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}acceptance-tests, "; fi
+          if [ "${{ needs.live-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}live-tests, "; fi
+          if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}e2e-tests, "; fi
           if [ "${{ needs.release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}release, "; fi
           FAILED_JOBS="${FAILED_JOBS%, }"
 
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           NOW="$(date -u +"%Y-%m-%dT%H:%M:%S.000000+00:00")"
-          ISSUE_ID="personal-knowledge-base-ci${{ github.run_number }}"
+          # Generate a short random ID with pkb- prefix matching beads convention
+          ISSUE_ID="pkb-$(head -c 6 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 3)"
           SHORT_SHA="${GITHUB_SHA:0:7}"
 
           # Append a P0 bug bead to issues.jsonl (same format as bd create)
