@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp" // INTENTIONAL: break lint for CI bead test (pkb-343)
+
 	"os/exec"
 	"os/signal"
 	"strings"
