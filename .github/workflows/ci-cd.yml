@@ -113,18 +113,32 @@ jobs:
     # Skips gracefully when secrets are not configured
     if: |
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      secrets.PKB_GOOGLE_CLIENT_ID != ''
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
+      - name: Check for required secrets
+        id: secrets_check
+        env:
+          PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$PKB_GOOGLE_CLIENT_ID" ]; then
+            echo "Secrets not configured, skipping live tests"
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Go
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Write OAuth token file
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         env:
           PKB_TOKEN_JSON: ${{ secrets.PKB_TOKEN_JSON }}
         run: |
@@ -136,6 +150,7 @@ jobs:
           echo "$PKB_TOKEN_JSON" > ~/.config/pkb/token.json
 
       - name: Run live API tests
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         env:
           PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
           PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
@@ -151,32 +166,49 @@ jobs:
     # Skips gracefully when secrets are not configured
     if: |
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      secrets.PKB_GOOGLE_CLIENT_ID != ''
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
+      - name: Check for required secrets
+        id: secrets_check
+        env:
+          PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$PKB_GOOGLE_CLIENT_ID" ]; then
+            echo "Secrets not configured, skipping E2E tests"
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Go
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Build pkb binary
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         run: make build
 
       - name: Setup Node.js
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install Playwright dependencies
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         working-directory: tests/e2e
         run: |
           npm ci
           npx playwright install --with-deps chromium
 
       - name: Write OAuth token file
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         env:
           PKB_TOKEN_JSON: ${{ secrets.PKB_TOKEN_JSON }}
         run: |
@@ -188,6 +220,7 @@ jobs:
           echo "$PKB_TOKEN_JSON" > ~/.config/pkb/token.json
 
       - name: Run Playwright E2E tests
+        if: steps.secrets_check.outputs.has_secrets == 'true'
         working-directory: tests/e2e
         env:
           PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
