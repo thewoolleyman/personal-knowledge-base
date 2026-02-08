@@ -73,7 +73,9 @@ jobs:
           go-version-file: go.mod
 
       - name: Run unit tests with race detection and coverage
-        run: go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+        run: |
+          set -o pipefail
+          go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
 
       - name: Enforce 100% function coverage (excluding main)
         run: |
