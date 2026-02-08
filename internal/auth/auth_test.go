@@ -149,6 +149,32 @@ func TestFlow_Run_BrowserOpenFallback(t *testing.T) {
 	assert.Contains(t, buf.String(), "http://example.com/auth")
 }
 
+func TestFlow_Run_BrowserOpenFallback_NilOut(t *testing.T) {
+	cfg := &oauth2.Config{
+		ClientID:     "test-id",
+		ClientSecret: "test-secret",
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "http://example.com/auth",
+			TokenURL: "http://example.com/token",
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	flow := &Flow{
+		Config: cfg,
+		// Out is intentionally nil to exercise the os.Stderr fallback.
+		OpenURL: func(rawURL string) error {
+			cancel()
+			return fmt.Errorf("no display")
+		},
+	}
+
+	_, err := flow.Run(ctx)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
 func TestFlow_Run_ExchangeError(t *testing.T) {
 	// Token server returns an error response.
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
