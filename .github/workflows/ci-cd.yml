@@ -252,7 +252,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [unit-tests, acceptance-tests]
+    needs: [unit-tests, acceptance-tests, live-tests, e2e-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     outputs:
       release_created: ${{ steps.check_release.outputs.release_created }}
