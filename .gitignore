@@ -35,5 +35,4 @@ tests/e2e/playwright-report/
 .runtime
 
 # Gas Town (added by gt)
-.claude/
 .logs/

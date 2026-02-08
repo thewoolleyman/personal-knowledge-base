@@ -1,6 +1,37 @@
 {
+  "editorMode": "normal",
+  "enabledPlugins": {
+    "beads@beads-marketplace": false
+  },
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "Bash(gh pr create*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gt tap guard pr-workflow"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git checkout -b*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gt tap guard pr-workflow"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git switch -c*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gt tap guard pr-workflow"
+          }
+        ]
+      },
       {
         "matcher": "^(Write|Edit|MultiEdit)$",
         "hooks": [
@@ -104,7 +135,57 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/bin:$PATH\" && gt prime --hook && gt nudge deacon session-started"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/log-hook-event.sh",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/hook-bridge.sh daemon-start",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/hook-bridge.sh session-restore",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/bin:$PATH\" && gt prime --hook"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/bin:$PATH\" && gt mail check --inject"
+          }
+        ]
+      },
       {
         "hooks": [
           {
@@ -130,28 +211,16 @@
         ]
       }
     ],
-    "SessionStart": [
+    "Stop": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/log-hook-event.sh",
-            "timeout": 2000
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/hook-bridge.sh daemon-start",
-            "timeout": 10000
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/hook-bridge.sh session-restore",
-            "timeout": 15000
+            "command": "export PATH=\"$HOME/go/bin:$HOME/bin:$PATH\" && gt costs record"
           }
         ]
-      }
-    ],
-    "Stop": [
+      },
       {
         "hooks": [
           {
