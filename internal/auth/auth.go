@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"os"
 
 	"golang.org/x/oauth2"
 )
@@ -20,6 +22,10 @@ type BrowserOpener func(url string) error
 type Flow struct {
 	Config  *oauth2.Config
 	OpenURL BrowserOpener
+
+	// Out is where fallback messages (e.g. manual URL) are written.
+	// Defaults to os.Stderr if nil.
+	Out io.Writer
 
 	// ListenAddr is the address to listen on for the callback server.
 	// Defaults to "127.0.0.1:0" (random port on loopback) if empty.
@@ -63,7 +69,15 @@ func (f *Flow) Run(ctx context.Context) (*oauth2.Token, error) {
 
 	authURL := f.Config.AuthCodeURL("state", oauth2.AccessTypeOffline)
 	if err := f.OpenURL(authURL); err != nil {
-		return nil, fmt.Errorf("open browser: %w", err)
+		out := f.Out
+		if out == nil {
+			out = os.Stderr
+		}
+		fmt.Fprintln(out, "Could not open browser automatically.")
+		fmt.Fprintln(out, "Open this URL in your browser to authorize:")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, authURL)
+		fmt.Fprintln(out)
 	}
 
 	// Wait for the auth code, an error, or cancellation.

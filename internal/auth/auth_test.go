@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -119,7 +120,7 @@ func TestFlow_Run_ContextCancelled(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestFlow_Run_BrowserOpenError(t *testing.T) {
+func TestFlow_Run_BrowserOpenFallback(t *testing.T) {
 	cfg := &oauth2.Config{
 		ClientID:     "test-id",
 		ClientSecret: "test-secret",
@@ -129,17 +130,23 @@ func TestFlow_Run_BrowserOpenError(t *testing.T) {
 		},
 	}
 
+	var buf bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+
 	flow := &Flow{
 		Config: cfg,
+		Out:    &buf,
 		OpenURL: func(rawURL string) error {
+			cancel() // cancel so flow doesn't block waiting for callback
 			return fmt.Errorf("browser not found")
 		},
 	}
 
-	_, err := flow.Run(context.Background())
+	_, err := flow.Run(ctx)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "open browser")
-	assert.Contains(t, err.Error(), "browser not found")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, buf.String(), "Could not open browser automatically")
+	assert.Contains(t, buf.String(), "http://example.com/auth")
 }
 
 func TestFlow_Run_ExchangeError(t *testing.T) {

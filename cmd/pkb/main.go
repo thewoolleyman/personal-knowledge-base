@@ -11,6 +11,7 @@ import (
 
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -63,7 +64,14 @@ var newGmailAPIClient = gmail.NewAPIClient
 
 // openBrowser opens a URL in the default browser. Overridden in tests.
 var openBrowser = func(rawURL string) error {
-	return exec.Command("open", rawURL).Start()
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", rawURL).Start()
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL).Start()
+	default: // linux, freebsd, etc.
+		return exec.Command("xdg-open", rawURL).Start()
+	}
 }
 
 // googleOAuthEndpoint returns the Google OAuth2 endpoint. Overridden in tests.
@@ -242,6 +250,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			flow := &auth.Flow{
 				Config:  oauthCfg,
 				OpenURL: openBrowser,
+				Out:     cmd.ErrOrStderr(),
 			}
 
 			fmt.Fprintln(out, "Opening browser for Google authorization...")
@@ -268,11 +277,16 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 }
 
 func runWithOutput(args []string, searchFn SearchFunc, out io.Writer) error {
+	return runWithOutputCtx(context.Background(), args, searchFn, out)
+}
+
+func runWithOutputCtx(ctx context.Context, args []string, searchFn SearchFunc, out io.Writer) error {
 	cmd := newRootCmd(searchFn, out)
 	cmd.SetArgs(args)
 	cmd.SetOut(out)
 	cmd.SetErr(out)
-	return cmd.Execute()
+	cmd.SetContext(ctx)
+	return cmd.ExecuteContext(ctx)
 }
 
 func run(args []string, searchFn SearchFunc) error {

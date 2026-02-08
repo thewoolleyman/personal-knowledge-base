@@ -876,11 +876,15 @@ func TestAuthCommand_FlowError(t *testing.T) {
 	}
 	t.Cleanup(func() { openBrowser = orig })
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	var buf bytes.Buffer
-	err := runWithOutput([]string{"auth"}, noopSearch, &buf)
+	err := runWithOutputCtx(ctx, []string{"auth"}, noopSearch, &buf)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "authorization failed")
 	assert.Contains(t, buf.String(), "Opening browser")
+	assert.Contains(t, buf.String(), "Could not open browser automatically")
+	assert.Contains(t, buf.String(), "Open this URL")
 }
 
 func TestAuthCommand_SaveTokenError(t *testing.T) {
