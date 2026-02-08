@@ -9,6 +9,11 @@ title = "pkb gitleaks config"
 [allowlist]
   description = "Global allowlist"
 
+  # Commits to ignore: CI bead testing commits with deliberate fake secrets
+  commits = [
+    "0f1135b583c85ba9b55d1d6a4970d6f83ee63021",
+  ]
+
   # Paths to ignore: gitignored dirs, example files, agent definitions (contain
   # fake credentials in documentation), and test files.
   paths = [
