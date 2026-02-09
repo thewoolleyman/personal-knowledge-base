@@ -32,5 +32,8 @@ tests/e2e/playwright-report/
 .bv/
 .beads/export-state/
 
+# Claude local config
+.claude/ralph-loop.local.md
+
 # beads
 .runtime
