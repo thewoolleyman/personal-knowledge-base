@@ -62,6 +62,11 @@ Search memory FIRST — don't reinvent approaches that already worked.
 - NEVER use `--no-verify` to skip pre-commit hooks
 - Pipeline auto-creates a P0 bug bead on main-branch failures -- check `bd ready` to see them
 
+### Test Rules
+- Tests MUST NEVER be skipped for any reason, including missing tokens
+- If tokens/credentials are missing, tests MUST fail with a message requiring the token be added to `.env`
+- Use `t.Fatal`/`t.Fatalf` (not `t.Skip`) when environment variables are missing
+
 ## Epic Completion Protocol
 
 **Before running `bd close <epic-id>`:**

@@ -39,7 +39,7 @@ Run and verify:
 make test-accept
 ```
 - [ ] All tests pass
-- [ ] No tests skipped (unless documented)
+- [ ] No tests skipped — tests MUST NOT be skipped for any reason (if tokens are missing, add them to `.env`)
 - [ ] Tests would catch regression if feature broke
 
 ### 3.4 Manual Verification

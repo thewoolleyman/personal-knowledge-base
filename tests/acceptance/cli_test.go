@@ -377,13 +377,11 @@ func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
 }
 
 func TestAcceptance_SearchWithCredentials_ReturnsResults(t *testing.T) {
-	// This test requires real Google Drive credentials.
-	// Skip if not configured.
 	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Skip("skipping: PKB_GOOGLE_CLIENT_ID not set")
+		t.Fatal("PKB_GOOGLE_CLIENT_ID not set — add it to your .env file")
 	}
 	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Skip("skipping: PKB_GOOGLE_CLIENT_SECRET not set")
+		t.Fatal("PKB_GOOGLE_CLIENT_SECRET not set — add it to your .env file")
 	}
 
 	binary := buildBinary(t)
@@ -529,10 +527,10 @@ func TestAcceptance_InteractiveAlias_TUI_Works(t *testing.T) {
 func TestAcceptance_SearchOutput_IncludesSourceTag(t *testing.T) {
 	// This test verifies the output format mentioned in README
 	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 
 	binary := buildBinary(t)
@@ -550,10 +548,10 @@ func TestAcceptance_SearchOutput_IncludesSourceTag(t *testing.T) {
 
 func TestAcceptance_SearchOutput_IncludesNumberedResults(t *testing.T) {
 	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 
 	binary := buildBinary(t)
@@ -571,10 +569,10 @@ func TestAcceptance_SearchOutput_IncludesNumberedResults(t *testing.T) {
 
 func TestAcceptance_SearchOutput_IncludesURLs(t *testing.T) {
 	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 
 	binary := buildBinary(t)
@@ -592,10 +590,10 @@ func TestAcceptance_SearchOutput_IncludesURLs(t *testing.T) {
 
 func TestAcceptance_SearchWithNoResults_ShowsFriendlyMessage(t *testing.T) {
 	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Skip("skipping: requires credentials")
+		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
 	}
 
 	binary := buildBinary(t)

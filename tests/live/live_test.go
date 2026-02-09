@@ -70,7 +70,7 @@ func requireCredentials(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"PKB_GOOGLE_CLIENT_ID", "PKB_GOOGLE_CLIENT_SECRET"} {
 		if os.Getenv(key) == "" {
-			t.Skipf("skipping: required environment variable %s is not set", key)
+			t.Fatalf("%s not set — add it to your .env file", key)
 		}
 	}
 }

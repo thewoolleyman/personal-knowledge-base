@@ -18,7 +18,7 @@ func requireEnv(t *testing.T, key string) string {
 	t.Helper()
 	v := os.Getenv(key)
 	if v == "" {
-		t.Skipf("skipping: %s not set", key)
+		t.Fatalf("%s not set — add it to your .env file", key)
 	}
 	return v
 }
