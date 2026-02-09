@@ -33,9 +33,3 @@ tests/e2e/playwright-report/
 
 # beads
 .runtime
-
-# Gas Town (added by gt)
-.logs/
-
-# Gas Town (added by gt)
-.claude/

@@ -1,3 +1,4 @@
 [tools]
 actionlint = "1.7.10"
 gitleaks = "8.21"
+node = "22"

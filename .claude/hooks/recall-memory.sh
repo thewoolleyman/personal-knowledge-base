@@ -9,6 +9,9 @@
 # Claude Code injects hook stdout into <system-reminder> tags.
 set -euo pipefail
 
+# Ensure mise-managed tools (node/npx) are on PATH for non-interactive shells
+eval "$(mise activate bash 2>/dev/null)" || true
+
 INPUT="$(cat 2>/dev/null)" || INPUT='{}'
 [ -z "$INPUT" ] && exit 0
 

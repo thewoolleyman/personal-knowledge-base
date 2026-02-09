@@ -8,6 +8,9 @@
 
 MODE="${1:-}"
 
+# Ensure mise-managed tools (node/npx) are on PATH for non-interactive shells
+eval "$(mise activate bash 2>/dev/null)" || true
+
 # Read JSON from stdin (Claude Code always pipes hook data this way)
 INPUT=$(cat 2>/dev/null) || INPUT='{}'
 [ -z "$INPUT" ] && INPUT='{}'
