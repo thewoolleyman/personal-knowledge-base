@@ -49,8 +49,11 @@ test-live:
 test-e2e: build
 	cd tests/e2e && npx playwright test
 
-## test-all: Run unit, acceptance, and integration tests
-test-all: test test-accept test-int
+## test-all: Run unit and acceptance tests (no live credentials required)
+test-all: test test-accept
+
+## test-full: Run unit, acceptance, and integration tests (requires OAuth token)
+test-full: test test-accept test-int
 
 ## lint: Run golangci-lint and actionlint
 lint: lint-actions

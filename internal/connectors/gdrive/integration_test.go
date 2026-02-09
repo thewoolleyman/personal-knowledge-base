@@ -5,14 +5,24 @@ package gdrive
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	drive "google.golang.org/api/drive/v3"
 )
+
+func TestMain(m *testing.M) {
+	// internal/connectors/gdrive/ is three levels below project root
+	if root, err := filepath.Abs("../../.."); err == nil {
+		_ = godotenv.Load(filepath.Join(root, ".env"))
+	}
+	os.Exit(m.Run())
+}
 
 func requireEnv(t *testing.T, key string) string {
 	t.Helper()

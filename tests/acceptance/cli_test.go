@@ -23,9 +23,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain loads the .env file from the project root before running tests.
+func TestMain(m *testing.M) {
+	// Walk up from tests/acceptance/ to find project root
+	if root, err := filepath.Abs("../.."); err == nil {
+		_ = godotenv.Load(filepath.Join(root, ".env"))
+	}
+	os.Exit(m.Run())
+}
 
 // projectRoot finds the project root by looking for go.mod.
 func projectRoot(t *testing.T) string {
@@ -165,6 +175,7 @@ func TestAcceptance_SearchWithQuery_GivesActionableOutput(t *testing.T) {
 	assert.True(t,
 		strings.Contains(combined, "PKB_GOOGLE_CLIENT_ID") ||
 			strings.Contains(combined, "credentials") ||
+			strings.Contains(combined, "OAuth") ||
 			strings.Contains(combined, "No results"),
 		"Output should tell the user what to configure or show results, got: %s", combined)
 }
@@ -376,26 +387,10 @@ func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
 	assert.Contains(t, html, "gmail", "should have gmail checkbox")
 }
 
-func TestAcceptance_SearchWithCredentials_ReturnsResults(t *testing.T) {
-	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Fatal("PKB_GOOGLE_CLIENT_ID not set — add it to your .env file")
-	}
-	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Fatal("PKB_GOOGLE_CLIENT_SECRET not set — add it to your .env file")
-	}
-
-	binary := buildBinary(t)
-
-	// Search for something that should exist in the Obsidian vault mirror
-	stdout, stderr, exitCode := runPKB(t, binary, "search", "md")
-
-	assert.Equal(t, 0, exitCode, "Expected zero exit code with valid credentials, stderr: %s", stderr)
-	assert.NotEmpty(t, stdout, "Expected search results in stdout")
-	// Results should contain numbered output
-	assert.Contains(t, stdout, "1.")
-}
-
 // --- Additional acceptance tests for comprehensive coverage ---
+// NOTE: Tests that require a live Google API token (SearchWithCredentials,
+// SearchOutput_IncludesSourceTag, etc.) live in tests/live/live_test.go
+// and are run via `make test-live`.
 
 func TestAcceptance_SearchWithSourcesFlag_FiltersResults(t *testing.T) {
 	binary := buildBinary(t)
@@ -524,87 +519,6 @@ func TestAcceptance_InteractiveAlias_TUI_Works(t *testing.T) {
 		"tui alias should show interactive help")
 }
 
-func TestAcceptance_SearchOutput_IncludesSourceTag(t *testing.T) {
-	// This test verifies the output format mentioned in README
-	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-
-	binary := buildBinary(t)
-
-	stdout, stderr, exitCode := runPKB(t, binary, "search", "test")
-
-	assert.Equal(t, 0, exitCode, "Search should succeed with credentials, stderr: %s", stderr)
-
-	if !strings.Contains(stdout, "No results") {
-		// If there are results, verify format includes source tag
-		assert.Regexp(t, `\[google-drive\]|\[gmail\]`, stdout,
-			"Results should include source tag in brackets")
-	}
-}
-
-func TestAcceptance_SearchOutput_IncludesNumberedResults(t *testing.T) {
-	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-
-	binary := buildBinary(t)
-
-	stdout, stderr, exitCode := runPKB(t, binary, "search", "test")
-
-	assert.Equal(t, 0, exitCode, "Search should succeed, stderr: %s", stderr)
-
-	if !strings.Contains(stdout, "No results") {
-		// Results should be numbered
-		assert.Regexp(t, `^\d+\.`, strings.TrimSpace(stdout),
-			"Results should start with numbered list (1., 2., etc.)")
-	}
-}
-
-func TestAcceptance_SearchOutput_IncludesURLs(t *testing.T) {
-	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-
-	binary := buildBinary(t)
-
-	stdout, stderr, exitCode := runPKB(t, binary, "search", "test")
-
-	assert.Equal(t, 0, exitCode, "Search should succeed, stderr: %s", stderr)
-
-	if !strings.Contains(stdout, "No results") {
-		// Results should include URLs
-		assert.Regexp(t, `https?://`, stdout,
-			"Results should include URLs")
-	}
-}
-
-func TestAcceptance_SearchWithNoResults_ShowsFriendlyMessage(t *testing.T) {
-	if os.Getenv("PKB_GOOGLE_CLIENT_ID") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-	if os.Getenv("PKB_GOOGLE_CLIENT_SECRET") == "" {
-		t.Fatal("required credentials not set — add PKB_GOOGLE_CLIENT_ID and PKB_GOOGLE_CLIENT_SECRET to your .env file")
-	}
-
-	binary := buildBinary(t)
-
-	// Search for something very unlikely to exist
-	stdout, stderr, exitCode := runPKB(t, binary, "search", "xyzzy_nonexistent_query_12345")
-
-	assert.Equal(t, 0, exitCode, "Search with no results should still exit 0, stderr: %s", stderr)
-	assert.Contains(t, stdout, "No results",
-		"Should show friendly 'No results' message")
-}
 
 func TestAcceptance_ServeHealthEndpoint_Returns200(t *testing.T) {
 	binary := buildBinary(t)
