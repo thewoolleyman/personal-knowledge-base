@@ -52,155 +52,107 @@ Slack, Notion, Google Keep, Dropbox, S3
 
 ## Development
 
-All development on this project uses [Claude Flow](https://github.com/ruvnet/claude-flow) with strict TDD (Red-Green-Refactor). Every line of implementation code exists because a test demanded it.
+Strict TDD (Red-Green-Refactor). Every line of implementation code exists because a test demanded it.
 
 ### Prerequisites
 
 - Go 1.25+ (`brew install go`)
-- `golangci-lint` (optional, for `make lint`: `brew install golangci-lint`)
 - `make` (pre-installed on macOS)
-- Google Cloud project with Drive API enabled (for Google Drive search)
+- [mise](https://mise.jdx.dev/) for tool management (`brew install mise && mise install`)
+- Google Cloud project with Drive API and Gmail API enabled (for integration/live tests)
 
 ### Quick start
 
 ```bash
 make help          # see all available targets
-make test          # run unit tests
-make test-accept   # run acceptance tests (builds real binary, tests UX)
+make test          # unit tests with race detection
+make test-accept   # acceptance tests (builds binary, tests like a user)
 make build         # compile the pkb binary
 ```
 
-### All make targets
+### Make targets
 
-Run `make help` to see what's available:
+All developer commands live in the `Makefile`. Run `make help` for the full list.
 
-```
-make build         Compile the pkb binary
-make test          Run unit tests with race detection and coverage
-make test-accept   Run acceptance tests (builds real binary, tests from user perspective)
-make test-int      Run component integration tests (requires Google Drive credentials)
-make test-all      Run unit, acceptance, and integration tests
-make lint          Run golangci-lint
-make vet           Run go vet
-make tidy          Tidy and verify go.mod
-make clean         Remove build artifacts
-make run           Build and run pkb --help
-make verify-hooks  Prove two-tier logging, context bundles, and recall work end-to-end
-```
+#### Build & run
 
-### CLI search
+| Target | Description |
+|--------|-------------|
+| `make build` | Compile the `pkb` binary |
+| `make run` | Build and run `pkb` with args (e.g. `make run search "agentic"`) |
+| `make serve` | Build, start the server on `:8080`, and open the web UI in a browser |
+| `make version` | Print the current version |
+| `make clean` | Remove build artifacts |
 
-```bash
-make build
-./pkb search "meeting notes"
-```
+#### Testing
 
-### HTTP API server + web UI
+| Target | Credentials needed | Description |
+|--------|-------------------|-------------|
+| `make test` | None | Unit tests with race detection and coverage |
+| `make test-accept` | None | Acceptance tests — builds real binary, tests from user perspective |
+| `make test-all` | None | Unit + acceptance tests |
+| `make test-int` | OAuth token | Component integration tests against real Google APIs |
+| `make test-live` | OAuth token | Live API tests with real credentials and token |
+| `make test-e2e` | OAuth token + Playwright | Playwright E2E tests for the web UI |
+| `make test-full` | OAuth token | Unit + acceptance + integration tests |
 
-```bash
-make build
-./pkb serve              # listens on :8080 by default
-./pkb serve --addr :3000 # custom port
-```
+#### Code quality
 
-Then open `http://localhost:8080` in your browser for the web UI.
+| Target | Description |
+|--------|-------------|
+| `make lint` | Run `golangci-lint` and `actionlint` (via mise) |
+| `make lint-actions` | Lint GitHub Actions workflow files only |
+| `make vet` | Run `go vet` |
+| `make tidy` | Tidy `go.mod` and verify no uncommitted changes |
 
-The web UI provides a search box and source selector checkboxes. Gmail is off by default (too noisy for general search). Check the sources you want and search.
+#### Security & hooks
 
-Endpoints:
-- `GET /` — web UI (HTML)
-- `GET /health` — returns 200 OK
-- `GET /search?q=<query>` — returns JSON array of results
-- `GET /search?q=<query>&sources=gdrive` — filter to specific connectors (comma-separated)
+| Target | Description |
+|--------|-------------|
+| `make scan-secrets` | Run gitleaks to detect hardcoded secrets in the repo |
+| `make scan-secrets-staged` | Run gitleaks on staged files only (same check as pre-commit hook) |
+| `make setup-hooks` | Install the pre-commit hook (gitleaks + beads export) |
+| `make verify-hooks` | Verify two-tier logging, context bundles, and recall work end-to-end |
 
-### Interactive TUI
+#### CI
 
-```bash
-make build
-./pkb interactive   # or: ./pkb tui
-```
+| Target | Description |
+|--------|-------------|
+| `make open-cicd-webpage` | Open the GitHub Actions CI/CD page in a browser |
 
-## Exploratory testing and acceptance for humans
+### Google OAuth setup
 
-These steps verify things work from a user's perspective. They mirror the automated acceptance tests in `tests/acceptance/`.
-
-### 1. Verify the project builds and tests pass
-
-```bash
-cd personal-knowledge-base
-make test            # unit tests — everything should pass
-make test-accept     # acceptance tests — builds real binary, tests like a user would
-```
-
-Expected: all pass, no race conditions detected.
-
-### 2. Build and try the CLI
-
-```bash
-make run             # builds and runs ./pkb --help
-```
-
-Expected: prints help text with `search`, `serve`, and `interactive` subcommands listed.
-
-### 3. Try the search command (without credentials)
-
-```bash
-make build
-./pkb search "test query"
-```
-
-Expected: tells you exactly which environment variables to set, with copy-pasteable `export` commands.
-
-### 4. Set up Google Drive OAuth credentials
+Required for `make test-int`, `make test-live`, and `make test-e2e`:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project (or use existing)
 3. Enable the **Google Drive API** and **Gmail API**
 4. Create OAuth 2.0 credentials (Desktop application type)
-5. Set environment variables (see `.env.example` for reference):
+5. Copy `.env.example` to `.env` and fill in values:
 
 ```bash
-export PKB_GOOGLE_CLIENT_ID="your-client-id"
-export PKB_GOOGLE_CLIENT_SECRET="your-client-secret"
+PKB_GOOGLE_CLIENT_ID="your-client-id"
+PKB_GOOGLE_CLIENT_SECRET="your-client-secret"
 ```
 
-**Tip:** Add these to `~/.zshrc` or `~/.bashrc` to persist across sessions.
-
-### 5. Run integration tests against real Google Drive
+### Using the CLI
 
 ```bash
-# Set credentials first (see step 4), then:
-make test-int
+make run search "meeting notes"    # search (builds first)
+make serve                         # start server + open web UI
+make run interactive               # launch TUI (alias: make run tui)
 ```
 
-Expected: tests search your actual Google Drive and return results for known files.
+### HTTP API endpoints
 
-### 6. Verify the Obsidian sync is working
+When the server is running (`make serve` or `./pkb serve`):
 
-```bash
-# Check if the launch agent is active
-launchctl print gui/$(id -u)/com.user.rsync-obsidian-to-gdrive
-
-# Check recent sync logs
-tail -20 ~/.local/log/rsync-obsidian.log
-
-# Dry-run to see what would sync
-rsync -avn --delete \
-  "/Users/<your-username>/-Obsidian-Default-Vault/" \
-  "/Users/<your-username>/Library/CloudStorage/GoogleDrive-<your-email>/My Drive/Personal_Knowledge_Base_Mirrors/Obsidian_Default_Vault/"
-```
-
-Expected: launch agent is active, logs show recent successful syncs, dry-run shows no pending changes (already in sync).
-
-### 7. Search for an Obsidian note via Google Drive
-
-Once sync is running and OAuth is configured:
-
-```bash
-./pkb search "some known note title from your vault"
-```
-
-Expected: returns the matching file from Google Drive with a link to view it.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Web UI |
+| `GET /health` | Health check (200 OK) |
+| `GET /search?q=<query>` | Search all sources, returns JSON |
+| `GET /search?q=<query>&sources=gdrive` | Filter to specific connectors (comma-separated) |
 
 ## Configuration
 
