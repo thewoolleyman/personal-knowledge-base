@@ -239,23 +239,19 @@ jobs:
           retention-days: 7
 
   # =============================================================================
-  # Stage 3a: Build & Validate Release - Build artifacts and verify they work
+  # Stage 3a: Check if release needed
   # =============================================================================
-  build-and-validate-release:
-    name: Build & Validate Release
+  check-release:
+    name: Check Release Needed
     runs-on: ubuntu-latest
     needs: [unit-tests, acceptance-tests, live-tests, e2e-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     outputs:
       release_created: ${{ steps.check_release.outputs.release_created }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
 
       - name: Read version from VERSION file
         id: version
@@ -278,19 +274,70 @@ jobs:
             echo "release_created=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build release artifacts
-        if: steps.check_release.outputs.release_created == 'true'
-        run: scripts/build-release.sh "${{ steps.version.outputs.version }}"
+  # =============================================================================
+  # Stage 3b: Build Linux/Windows artifacts on Ubuntu
+  # =============================================================================
+  build-linux-windows:
+    name: Build Linux/Windows
+    runs-on: ubuntu-latest
+    needs: [check-release]
+    if: needs.check-release.outputs.release_created == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux and Windows artifacts
+        run: TARGETS="linux/amd64 linux/arm64 windows/amd64" scripts/build-release.sh "${{ needs.check-release.outputs.version }}"
 
       - name: Validate release artifacts
-        if: steps.check_release.outputs.release_created == 'true'
-        run: scripts/validate-release.sh "${{ steps.version.outputs.version }}"
+        run: scripts/validate-release.sh "${{ needs.check-release.outputs.version }}"
 
-      - name: Upload validated release artifacts
-        if: steps.check_release.outputs.release_created == 'true'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
+          name: release-artifacts-linux-windows
+          path: dist/*.zip
+          retention-days: 1
+
+  # =============================================================================
+  # Stage 3c: Build macOS artifacts on macOS runner (with ad-hoc codesign)
+  # =============================================================================
+  build-macos:
+    name: Build macOS (signed)
+    runs-on: macos-latest
+    needs: [check-release]
+    if: needs.check-release.outputs.release_created == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build and sign macOS artifacts
+        run: TARGETS="darwin/amd64 darwin/arm64" scripts/build-release.sh "${{ needs.check-release.outputs.version }}"
+
+      - name: Verify code signatures
+        run: |
+          for zip in dist/pkb-darwin-*.zip; do
+            TMPDIR=$(mktemp -d)
+            unzip -o "$zip" -d "$TMPDIR"
+            codesign --verify --verbose "$TMPDIR/pkb"
+            echo "OK: $(basename $zip) signature verified"
+            rm -rf "$TMPDIR"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-macos
           path: dist/*.zip
           retention-days: 1
 
@@ -300,8 +347,8 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-and-validate-release]
-    if: needs.build-and-validate-release.outputs.release_created == 'true'
+    needs: [check-release, build-linux-windows, build-macos]
+    if: needs.check-release.outputs.release_created == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -312,10 +359,16 @@ jobs:
           VERSION=$(tr -d '[:space:]' < VERSION)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Download validated release artifacts
+      - name: Download Linux/Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          name: release-artifacts-linux-windows
+          path: dist
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-macos
           path: dist
 
       - name: Create GitHub Release
@@ -351,7 +404,7 @@ jobs:
   notify-failure:
     name: Auto-file CI failure bead
     runs-on: ubuntu-latest
-    needs: [lint, secrets-scan, unit-tests, acceptance-tests, live-tests, e2e-tests, build-and-validate-release, release]
+    needs: [lint, secrets-scan, unit-tests, acceptance-tests, live-tests, e2e-tests, check-release, build-linux-windows, build-macos, release]
     if: >-
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -362,7 +415,8 @@ jobs:
        needs.acceptance-tests.result == 'failure' ||
        needs.live-tests.result == 'failure' ||
        needs.e2e-tests.result == 'failure' ||
-       needs.build-and-validate-release.result == 'failure' ||
+       needs.build-linux-windows.result == 'failure' ||
+       needs.build-macos.result == 'failure' ||
        needs.release.result == 'failure')
     steps:
       - name: Checkout repository
@@ -382,7 +436,8 @@ jobs:
           if [ "${{ needs.acceptance-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}acceptance-tests, "; fi
           if [ "${{ needs.live-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}live-tests, "; fi
           if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}e2e-tests, "; fi
-          if [ "${{ needs.build-and-validate-release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}build-and-validate-release, "; fi
+          if [ "${{ needs.build-linux-windows.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}build-linux-windows, "; fi
+          if [ "${{ needs.build-macos.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}build-macos, "; fi
           if [ "${{ needs.release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}release, "; fi
           FAILED_JOBS="${FAILED_JOBS%, }"
 
