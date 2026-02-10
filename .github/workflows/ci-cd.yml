@@ -384,14 +384,14 @@ jobs:
           ### macOS (Apple Silicon)
           \`\`\`bash
           curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-arm64.zip
-          unzip pkb.zip && xattr -d com.apple.quarantine pkb && chmod +x pkb
+          unzip pkb.zip && xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
           sudo mv pkb /usr/local/bin/
           \`\`\`
 
           ### macOS (Intel)
           \`\`\`bash
           curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-amd64.zip
-          unzip pkb.zip && xattr -d com.apple.quarantine pkb && chmod +x pkb
+          unzip pkb.zip && xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
           sudo mv pkb /usr/local/bin/
           \`\`\`
 
@@ -402,7 +402,7 @@ jobs:
           sudo mv pkb /usr/local/bin/
           \`\`\`
 
-          > **macOS users:** The \`xattr -d com.apple.quarantine pkb\` step removes the macOS quarantine flag that blocks unsigned downloads. This is required for binaries not signed with an Apple Developer ID.
+          > **macOS users:** The \`xattr\` step removes the quarantine flag that macOS adds to browser downloads. It is harmless if you downloaded via \`curl\` (which does not set quarantine).
           EOF
           gh release create "v$VERSION" \
             --title "v$VERSION" \

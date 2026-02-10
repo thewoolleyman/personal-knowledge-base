@@ -15,8 +15,8 @@ curl -L -o pkb.zip https://github.com/thewoolleyman/personal-knowledge-base/rele
 # Extract
 unzip pkb.zip
 
-# Remove macOS quarantine (required for unsigned downloads)
-xattr -d com.apple.quarantine pkb
+# Remove macOS quarantine if present (set by browsers, not curl)
+xattr -d com.apple.quarantine pkb 2>/dev/null || true
 
 # Make executable and move to PATH
 chmod +x pkb
