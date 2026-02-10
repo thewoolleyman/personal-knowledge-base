@@ -883,7 +883,6 @@ func TestAuthCommand_FlowError(t *testing.T) {
 	err := runWithOutputCtx(ctx, []string{"auth"}, noopSearch, &buf)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "Opening browser")
-	assert.Contains(t, buf.String(), "Could not open browser automatically")
 	assert.Contains(t, buf.String(), "Open this URL")
 }
 

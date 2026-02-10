@@ -87,25 +87,26 @@ func (f *Flow) Run(ctx context.Context) (*oauth2.Token, error) {
 	if out == nil {
 		out = os.Stderr
 	}
-	if err := f.OpenURL(authURL); err != nil {
-		fmt.Fprintln(out, "Could not open browser automatically.")
+	if f.In != nil {
+		// Always print the URL when manual input is available, since the
+		// browser may open on a different machine (e.g. SSH / headless).
+		_ = f.OpenURL(authURL) // best-effort browser open
 		fmt.Fprintln(out, "Open this URL in your browser to authorize:")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, authURL)
 		fmt.Fprintln(out)
-	}
-
-	// When In is set, always offer manual code entry as a fallback.
-	// This handles the common case where the browser opens on a
-	// different machine (e.g. SSH session) and the localhost redirect
-	// is not reachable.
-	if f.In != nil {
 		fmt.Fprintln(out, "After authorizing, the browser will redirect to a localhost URL.")
 		fmt.Fprintln(out, "If the page fails to load, copy the ENTIRE URL from your browser's address bar")
 		fmt.Fprintln(out, "and paste it below:")
 		fmt.Fprintln(out)
 		fmt.Fprint(out, "Paste URL or code: ")
 		go f.readManualCode(codeCh)
+	} else if err := f.OpenURL(authURL); err != nil {
+		fmt.Fprintln(out, "Could not open browser automatically.")
+		fmt.Fprintln(out, "Open this URL in your browser to authorize:")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, authURL)
+		fmt.Fprintln(out)
 	}
 
 	// Wait for the auth code, an error, or cancellation.

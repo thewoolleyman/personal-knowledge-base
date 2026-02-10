@@ -15,6 +15,7 @@ cache/
 .claude-flow/metrics/
 .swarm/
 coverage.out
+func-coverage.txt
 
 # Private keys and certificates
 *.pem

@@ -531,7 +531,8 @@ func TestFlow_Run_ManualCodeEntry_ShowsInstructions_BrowserFails(t *testing.T) {
 
 	_, _ = flow.Run(ctx)
 	output := outBuf.String()
-	assert.Contains(t, output, "Could not open browser")
+	// When In is set, the URL is always printed (not "Could not open browser").
+	assert.Contains(t, output, "Open this URL in your browser")
 	assert.Contains(t, output, "Paste URL or code")
 }
 
