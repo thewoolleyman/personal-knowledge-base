@@ -10,6 +10,7 @@ cache/
 *.db-shm
 *.db-wal
 /pkb
+/dist/
 .claude-flow/learning/hook_logs/
 .claude-flow/learning/context_bundles/
 .claude-flow/metrics/

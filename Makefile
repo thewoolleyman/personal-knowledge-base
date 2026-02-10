@@ -72,9 +72,18 @@ tidy:
 	go mod tidy
 	git diff --exit-code go.mod go.sum
 
+## release-build: Cross-compile and package release artifacts for all platforms
+release-build:
+	scripts/build-release.sh
+
+## release-validate: Validate release artifacts by installing and running the current-platform binary
+release-validate:
+	scripts/validate-release.sh
+
 ## clean: Remove build artifacts
 clean:
 	rm -f $(BINARY)
+	rm -rf dist
 
 ## run: Build and run pkb with args (e.g. make run search "agentic")
 ifeq (run,$(firstword $(MAKECMDGOALS)))

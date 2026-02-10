@@ -239,10 +239,10 @@ jobs:
           retention-days: 7
 
   # =============================================================================
-  # Stage 3: Release - Auto-release on push to main, skip if version exists
+  # Stage 3a: Build & Validate Release - Build artifacts and verify they work
   # =============================================================================
-  release:
-    name: Create GitHub Release
+  build-and-validate-release:
+    name: Build & Validate Release
     runs-on: ubuntu-latest
     needs: [unit-tests, acceptance-tests, live-tests, e2e-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -278,29 +278,47 @@ jobs:
             echo "release_created=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Cross-compile and package for all platforms
+      - name: Build release artifacts
         if: steps.check_release.outputs.release_created == 'true'
+        run: scripts/build-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Validate release artifacts
+        if: steps.check_release.outputs.release_created == 'true'
+        run: scripts/validate-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload validated release artifacts
+        if: steps.check_release.outputs.release_created == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/*.zip
+          retention-days: 1
+
+  # =============================================================================
+  # Stage 3b: Release - Publish validated artifacts to GitHub
+  # =============================================================================
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-and-validate-release]
+    if: needs.build-and-validate-release.outputs.release_created == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read version from VERSION file
+        id: version
         run: |
-          mkdir -p dist
-          VERSION="${{ steps.version.outputs.version }}"
-          targets="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
-          for target in $targets; do
-            GOOS="${target%/*}"
-            GOARCH="${target#*/}"
-            ext=""
-            if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-            binname="pkb${ext}"
-            echo "Building ${GOOS}/${GOARCH}..."
-            GOOS=$GOOS GOARCH=$GOARCH go build \
-              -ldflags "-X main.version=$VERSION" \
-              -o "$binname" ./cmd/pkb
-            zipname="dist/pkb-${GOOS}-${GOARCH}.zip"
-            zip -j "$zipname" "$binname"
-            rm "$binname"
-          done
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download validated release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist
 
       - name: Create GitHub Release
-        if: steps.check_release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -311,7 +329,6 @@ jobs:
             dist/*.zip
 
       - name: Bump version for next release
-        if: steps.check_release.outputs.release_created == 'true'
         run: |
           CURRENT="${{ steps.version.outputs.version }}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
@@ -334,7 +351,7 @@ jobs:
   notify-failure:
     name: Auto-file CI failure bead
     runs-on: ubuntu-latest
-    needs: [lint, secrets-scan, unit-tests, acceptance-tests, live-tests, e2e-tests, release]
+    needs: [lint, secrets-scan, unit-tests, acceptance-tests, live-tests, e2e-tests, build-and-validate-release, release]
     if: >-
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -345,6 +362,7 @@ jobs:
        needs.acceptance-tests.result == 'failure' ||
        needs.live-tests.result == 'failure' ||
        needs.e2e-tests.result == 'failure' ||
+       needs.build-and-validate-release.result == 'failure' ||
        needs.release.result == 'failure')
     steps:
       - name: Checkout repository
@@ -364,6 +382,7 @@ jobs:
           if [ "${{ needs.acceptance-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}acceptance-tests, "; fi
           if [ "${{ needs.live-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}live-tests, "; fi
           if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}e2e-tests, "; fi
+          if [ "${{ needs.build-and-validate-release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}build-and-validate-release, "; fi
           if [ "${{ needs.release.result }}" = "failure" ]; then FAILED_JOBS="${FAILED_JOBS}release, "; fi
           FAILED_JOBS="${FAILED_JOBS%, }"
 
