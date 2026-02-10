@@ -223,12 +223,6 @@
     "commit": "Co-Authored-By: claude-flow <ruv@ruv.net>",
     "pr": "🤖 Generated with [claude-flow](https://github.com/ruvnet/claude-flow)"
   },
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["@anthropic-ai/playwright-mcp"]
-    }
-  },
   "claudeFlow": {
     "version": "3.0.0",
     "enabled": true,

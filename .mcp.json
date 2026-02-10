@@ -15,6 +15,12 @@
         "CLAUDE_FLOW_MEMORY_BACKEND": "hybrid"
       },
       "autoStart": false
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@anthropic-ai/playwright-mcp"
+      ]
     }
   }
 }
