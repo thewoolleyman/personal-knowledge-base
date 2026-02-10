@@ -251,6 +251,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				Config:  oauthCfg,
 				OpenURL: openBrowser,
 				Out:     cmd.ErrOrStderr(),
+				In:      cmd.InOrStdin(),
 			}
 
 			fmt.Fprintln(out, "Opening browser for Google authorization...")
