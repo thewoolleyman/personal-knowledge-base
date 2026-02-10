@@ -139,6 +139,29 @@ All developer commands live in the `Makefile`. Run `make help` for the full list
 | `make test-e2e` | OAuth token + Playwright | Playwright E2E tests for the web UI |
 | `make test-full` | OAuth token | Unit + acceptance + integration tests |
 
+#### Manual exploratory testing
+
+A test page exists across multiple connected services for manual smoke-testing. Search for it to verify connectors are working end-to-end:
+
+```bash
+pkb search "PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE"
+```
+
+Expected output (results may vary as connectors are added):
+
+```
+1. PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE (Gmail)
+   source: gmail This is a test page for live integration testing of https://git...
+   https://mail.google.com/mail/u/0/#inbox/19c1d1362b867da8
+   [gmail]
+
+2. PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE (google-drive)
+   https://drive.google.com/drive/folders/18CsdYxWehQgrDQ6inaH4bGOUM9wo_uN1
+   [google-drive]
+```
+
+If you see results from each configured connector, the integration is healthy.
+
 #### Code quality
 
 | Target | Description |
