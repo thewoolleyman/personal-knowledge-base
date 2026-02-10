@@ -329,7 +329,9 @@ jobs:
           for zip in dist/pkb-darwin-*.zip; do
             TMPDIR=$(mktemp -d)
             unzip -o "$zip" -d "$TMPDIR"
-            codesign --verify --verbose "$TMPDIR/pkb"
+            # Find pkb binary inside the versioned subdirectory
+            BINARY=$(find "$TMPDIR" -name pkb -type f | head -1)
+            codesign --verify --verbose "$BINARY"
             echo "OK: $(basename "$zip") signature verified"
             rm -rf "$TMPDIR"
           done
@@ -383,22 +385,28 @@ jobs:
 
           ### macOS (Apple Silicon)
           \`\`\`bash
-          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-arm64.zip
-          unzip pkb.zip && xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
+          curl -L -O https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-arm64-v${VERSION}.zip
+          unzip pkb-darwin-arm64-v${VERSION}.zip
+          cd pkb-darwin-arm64-v${VERSION}
+          xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
           sudo mv pkb /usr/local/bin/
           \`\`\`
 
           ### macOS (Intel)
           \`\`\`bash
-          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-amd64.zip
-          unzip pkb.zip && xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
+          curl -L -O https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-amd64-v${VERSION}.zip
+          unzip pkb-darwin-amd64-v${VERSION}.zip
+          cd pkb-darwin-amd64-v${VERSION}
+          xattr -d com.apple.quarantine pkb 2>/dev/null; chmod +x pkb
           sudo mv pkb /usr/local/bin/
           \`\`\`
 
           ### Linux (amd64)
           \`\`\`bash
-          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-linux-amd64.zip
-          unzip pkb.zip && chmod +x pkb
+          curl -L -O https://github.com/${REPO}/releases/download/v${VERSION}/pkb-linux-amd64-v${VERSION}.zip
+          unzip pkb-linux-amd64-v${VERSION}.zip
+          cd pkb-linux-amd64-v${VERSION}
+          chmod +x pkb
           sudo mv pkb /usr/local/bin/
           \`\`\`
 

@@ -2,7 +2,8 @@
 # build-release.sh - Cross-compile pkb for all supported platforms and package as zip files.
 # Usage: scripts/build-release.sh [VERSION]
 # VERSION defaults to contents of VERSION file.
-# Output: dist/pkb-<os>-<arch>.zip for each target platform.
+# Output: dist/pkb-<os>-<arch>-v<version>.zip for each target platform.
+# Each zip extracts to a subdirectory named pkb-<os>-<arch>-v<version>/ containing the binary.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,8 +33,11 @@ for target in $TARGETS; do
     codesign -s - --force "$DIST_DIR/$binname"
   fi
 
-  zipname="$DIST_DIR/pkb-${GOOS}-${GOARCH}.zip"
-  (cd "$DIST_DIR" && zip -j "$zipname" "$binname" && rm "$binname")
+  archivename="pkb-${GOOS}-${GOARCH}-v${VERSION}"
+  zipname="$DIST_DIR/${archivename}.zip"
+  mkdir -p "$DIST_DIR/$archivename"
+  mv "$DIST_DIR/$binname" "$DIST_DIR/$archivename/$binname"
+  (cd "$DIST_DIR" && zip -r "$zipname" "$archivename" && rm -rf "$archivename")
 done
 
 echo "Release artifacts in $DIST_DIR:"

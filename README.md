@@ -9,16 +9,18 @@ Download a pre-built binary from [GitHub Releases](https://github.com/thewoolley
 ### macOS
 
 ```bash
+# Set version (find latest at https://github.com/thewoolleyman/personal-knowledge-base/releases/latest)
+VERSION=0.3.26  # replace with latest version
+
 # Download (replace arm64 with amd64 for Intel Macs)
-curl -L -o pkb.zip https://github.com/thewoolleyman/personal-knowledge-base/releases/latest/download/pkb-darwin-arm64.zip
+curl -L -O https://github.com/thewoolleyman/personal-knowledge-base/releases/download/v${VERSION}/pkb-darwin-arm64-v${VERSION}.zip
 
-# Extract
-unzip pkb.zip
+# Extract (creates pkb-darwin-arm64-v${VERSION}/ subdirectory)
+unzip pkb-darwin-arm64-v${VERSION}.zip
 
-# Remove macOS quarantine if present (set by browsers, not curl)
+# Remove macOS quarantine if present (set by browsers, not curl), make executable, and install
+cd pkb-darwin-arm64-v${VERSION}
 xattr -d com.apple.quarantine pkb 2>/dev/null || true
-
-# Make executable and move to PATH
 chmod +x pkb
 sudo mv pkb /usr/local/bin/
 ```
@@ -26,18 +28,22 @@ sudo mv pkb /usr/local/bin/
 ### Linux
 
 ```bash
+# Set version (find latest at https://github.com/thewoolleyman/personal-knowledge-base/releases/latest)
+VERSION=0.3.26  # replace with latest version
+
 # Download (replace amd64 with arm64 for ARM)
-curl -L -o pkb.zip https://github.com/thewoolleyman/personal-knowledge-base/releases/latest/download/pkb-linux-amd64.zip
+curl -L -O https://github.com/thewoolleyman/personal-knowledge-base/releases/download/v${VERSION}/pkb-linux-amd64-v${VERSION}.zip
 
 # Extract and install
-unzip pkb.zip
+unzip pkb-linux-amd64-v${VERSION}.zip
+cd pkb-linux-amd64-v${VERSION}
 chmod +x pkb
 sudo mv pkb /usr/local/bin/
 ```
 
 ### Windows
 
-Download `pkb-windows-amd64.zip` from the [latest release](https://github.com/thewoolleyman/personal-knowledge-base/releases/latest), extract `pkb.exe`, and add it to your PATH.
+Download the `pkb-windows-amd64-v<VERSION>.zip` for your version from the [latest release](https://github.com/thewoolleyman/personal-knowledge-base/releases/latest), extract the `pkb.exe` from the subdirectory, and add it to your PATH.
 
 ### Verify
 

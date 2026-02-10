@@ -43,7 +43,7 @@ func TestBuildReleaseScript(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "build-release.sh failed:\n%s", out)
 
-	// Verify all expected zip files exist
+	// Verify all expected zip files exist (versioned filenames)
 	expectedPlatforms := []string{
 		"linux-amd64", "linux-arm64",
 		"darwin-amd64", "darwin-arm64",
@@ -51,7 +51,7 @@ func TestBuildReleaseScript(t *testing.T) {
 	}
 	distDir := filepath.Join(root, "dist")
 	for _, plat := range expectedPlatforms {
-		zipFile := filepath.Join(distDir, "pkb-"+plat+".zip")
+		zipFile := filepath.Join(distDir, "pkb-"+plat+"-v"+testVersion+".zip")
 		_, err := os.Stat(zipFile)
 		assert.NoError(t, err, "expected release artifact %s to exist", zipFile)
 	}
@@ -123,8 +123,9 @@ func TestReleaseZipContainsSingleBinary(t *testing.T) {
 	distDir := filepath.Join(root, "dist")
 	t.Cleanup(func() { os.RemoveAll(distDir) })
 
-	// Extract the zip and verify it contains exactly one binary named "pkb"
-	zipFile := filepath.Join(distDir, "pkb-"+goos+"-"+goarch+".zip")
+	// Extract the zip and verify it contains a subdirectory with the binary
+	archiveName := "pkb-" + goos + "-" + goarch + "-v" + testVersion
+	zipFile := filepath.Join(distDir, archiveName+".zip")
 	require.FileExists(t, zipFile)
 
 	tmpDir := t.TempDir()
@@ -132,13 +133,17 @@ func TestReleaseZipContainsSingleBinary(t *testing.T) {
 	out, err = unzipCmd.CombinedOutput()
 	require.NoError(t, err, "unzip failed:\n%s", out)
 
+	// Verify subdirectory exists
+	subDir := filepath.Join(tmpDir, archiveName)
+	assert.DirExists(t, subDir, "zip should extract to subdirectory %s", archiveName)
+
 	expectedBinary := "pkb"
 	if goos == "windows" {
 		expectedBinary = "pkb.exe"
 	}
 
-	binPath := filepath.Join(tmpDir, expectedBinary)
-	assert.FileExists(t, binPath, "zip should contain binary named %s", expectedBinary)
+	binPath := filepath.Join(subDir, expectedBinary)
+	assert.FileExists(t, binPath, "subdirectory should contain binary named %s", expectedBinary)
 
 	// Verify it's executable (not applicable on Windows)
 	if goos != "windows" {
@@ -173,7 +178,8 @@ func TestReleaseZipMacOSCodesigned(t *testing.T) {
 	distDir := filepath.Join(root, "dist")
 	t.Cleanup(func() { os.RemoveAll(distDir) })
 
-	zipFile := filepath.Join(distDir, "pkb-darwin-"+runtime.GOARCH+".zip")
+	archiveName := "pkb-darwin-" + runtime.GOARCH + "-v" + testVersion
+	zipFile := filepath.Join(distDir, archiveName+".zip")
 	require.FileExists(t, zipFile)
 
 	tmpDir := t.TempDir()
@@ -181,7 +187,7 @@ func TestReleaseZipMacOSCodesigned(t *testing.T) {
 	out, err = unzipCmd.CombinedOutput()
 	require.NoError(t, err, "unzip failed:\n%s", out)
 
-	binPath := filepath.Join(tmpDir, "pkb")
+	binPath := filepath.Join(tmpDir, archiveName, "pkb")
 
 	// Verify ad-hoc code signature
 	verifyCmd := exec.Command("codesign", "--verify", "--verbose", binPath)
@@ -222,10 +228,11 @@ func TestReleaseInstallFlow(t *testing.T) {
 	distDir := filepath.Join(root, "dist")
 	t.Cleanup(func() { os.RemoveAll(distDir) })
 
-	zipFile := filepath.Join(distDir, "pkb-"+goos+"-"+goarch+".zip")
+	archiveName := "pkb-" + goos + "-" + goarch + "-v" + testVersion
+	zipFile := filepath.Join(distDir, archiveName+".zip")
 	installDir := t.TempDir()
 
-	// Step 2: Extract
+	// Step 2: Extract (zip contains a subdirectory)
 	unzipCmd := exec.Command("unzip", "-o", zipFile, "-d", installDir)
 	out, err = unzipCmd.CombinedOutput()
 	require.NoError(t, err, "unzip failed:\n%s", out)
@@ -234,7 +241,7 @@ func TestReleaseInstallFlow(t *testing.T) {
 	if goos == "windows" {
 		expectedBinary = "pkb.exe"
 	}
-	binPath := filepath.Join(installDir, expectedBinary)
+	binPath := filepath.Join(installDir, archiveName, expectedBinary)
 
 	// Step 3: On macOS, simulate quarantine and remove it
 	if goos == "darwin" {

@@ -12,7 +12,8 @@ DIST_DIR="$REPO_ROOT/dist"
 GOOS="$(go env GOOS)"
 GOARCH="$(go env GOARCH)"
 
-ZIPFILE="$DIST_DIR/pkb-${GOOS}-${GOARCH}.zip"
+ARCHIVENAME="pkb-${GOOS}-${GOARCH}-v${VERSION}"
+ZIPFILE="$DIST_DIR/${ARCHIVENAME}.zip"
 
 if [ ! -f "$ZIPFILE" ]; then
   echo "FAIL: Expected release artifact not found: $ZIPFILE" >&2
@@ -25,9 +26,9 @@ trap 'rm -rf "$TMPDIR"' EXIT
 echo "Validating $ZIPFILE..."
 unzip -o "$ZIPFILE" -d "$TMPDIR"
 
-BINARY="$TMPDIR/pkb"
+BINARY="$TMPDIR/$ARCHIVENAME/pkb"
 if [ "$GOOS" = "windows" ]; then
-  BINARY="$TMPDIR/pkb.exe"
+  BINARY="$TMPDIR/$ARCHIVENAME/pkb.exe"
 fi
 
 if [ ! -f "$BINARY" ]; then
