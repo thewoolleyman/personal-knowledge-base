@@ -330,7 +330,7 @@ jobs:
             TMPDIR=$(mktemp -d)
             unzip -o "$zip" -d "$TMPDIR"
             codesign --verify --verbose "$TMPDIR/pkb"
-            echo "OK: $(basename $zip) signature verified"
+            echo "OK: $(basename "$zip") signature verified"
             rm -rf "$TMPDIR"
           done
 
