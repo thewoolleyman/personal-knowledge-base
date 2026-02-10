@@ -278,7 +278,7 @@ jobs:
             echo "release_created=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Cross-compile for all platforms
+      - name: Cross-compile and package for all platforms
         if: steps.check_release.outputs.release_created == 'true'
         run: |
           mkdir -p dist
@@ -289,11 +289,14 @@ jobs:
             GOARCH="${target#*/}"
             ext=""
             if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-            output="dist/pkb-${GOOS}-${GOARCH}${ext}"
-            echo "Building $output..."
+            binname="pkb${ext}"
+            echo "Building ${GOOS}/${GOARCH}..."
             GOOS=$GOOS GOARCH=$GOARCH go build \
               -ldflags "-X main.version=$VERSION" \
-              -o "$output" ./cmd/pkb
+              -o "$binname" ./cmd/pkb
+            zipname="dist/pkb-${GOOS}-${GOARCH}.zip"
+            zip -j "$zipname" "$binname"
+            rm "$binname"
           done
 
       - name: Create GitHub Release
@@ -305,7 +308,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "v$VERSION" \
             --generate-notes \
-            dist/*
+            dist/*.zip
 
       - name: Bump version for next release
         if: steps.check_release.outputs.release_created == 'true'
