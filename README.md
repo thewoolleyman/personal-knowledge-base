@@ -2,6 +2,49 @@
 
 A personal searchable knowledge base that aggregates data across services (Google Drive, Gmail, Slack, Notion, etc.) with an AI-native CLI/TUI interface. Built in Go. Runs locally during development, designed to deploy to a VPS later.
 
+## Installation
+
+Download a pre-built binary from [GitHub Releases](https://github.com/thewoolleyman/personal-knowledge-base/releases/latest).
+
+### macOS
+
+```bash
+# Download (replace arm64 with amd64 for Intel Macs)
+curl -L -o pkb.zip https://github.com/thewoolleyman/personal-knowledge-base/releases/latest/download/pkb-darwin-arm64.zip
+
+# Extract
+unzip pkb.zip
+
+# Remove macOS quarantine (required for unsigned downloads)
+xattr -d com.apple.quarantine pkb
+
+# Make executable and move to PATH
+chmod +x pkb
+sudo mv pkb /usr/local/bin/
+```
+
+### Linux
+
+```bash
+# Download (replace amd64 with arm64 for ARM)
+curl -L -o pkb.zip https://github.com/thewoolleyman/personal-knowledge-base/releases/latest/download/pkb-linux-amd64.zip
+
+# Extract and install
+unzip pkb.zip
+chmod +x pkb
+sudo mv pkb /usr/local/bin/
+```
+
+### Windows
+
+Download `pkb-windows-amd64.zip` from the [latest release](https://github.com/thewoolleyman/personal-knowledge-base/releases/latest), extract `pkb.exe`, and add it to your PATH.
+
+### Verify
+
+```bash
+pkb version
+```
+
 ## Architecture
 
 ```

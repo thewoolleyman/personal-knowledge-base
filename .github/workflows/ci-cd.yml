@@ -376,10 +376,39 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          REPO="thewoolleyman/personal-knowledge-base"
+          NOTES_FILE="$(mktemp)"
+          cat > "$NOTES_FILE" <<EOF
+          ## Install
+
+          ### macOS (Apple Silicon)
+          \`\`\`bash
+          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-arm64.zip
+          unzip pkb.zip && xattr -d com.apple.quarantine pkb && chmod +x pkb
+          sudo mv pkb /usr/local/bin/
+          \`\`\`
+
+          ### macOS (Intel)
+          \`\`\`bash
+          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-darwin-amd64.zip
+          unzip pkb.zip && xattr -d com.apple.quarantine pkb && chmod +x pkb
+          sudo mv pkb /usr/local/bin/
+          \`\`\`
+
+          ### Linux (amd64)
+          \`\`\`bash
+          curl -L -o pkb.zip https://github.com/${REPO}/releases/download/v${VERSION}/pkb-linux-amd64.zip
+          unzip pkb.zip && chmod +x pkb
+          sudo mv pkb /usr/local/bin/
+          \`\`\`
+
+          > **macOS users:** The \`xattr -d com.apple.quarantine pkb\` step removes the macOS quarantine flag that blocks unsigned downloads. This is required for binaries not signed with an Apple Developer ID.
+          EOF
           gh release create "v$VERSION" \
             --title "v$VERSION" \
-            --generate-notes \
+            --notes-file "$NOTES_FILE" \
             dist/*.zip
+          rm -f "$NOTES_FILE"
 
       - name: Bump version for next release
         run: |
