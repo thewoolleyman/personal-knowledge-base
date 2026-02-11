@@ -31,17 +31,64 @@ func NewFolderScopedClient(ctx context.Context, tokenSource oauth2.TokenSource, 
 	return &FolderScopedClient{service: srv, folderID: folderID}, nil
 }
 
-// buildFolderQuery constructs a Drive API query that searches full text within a folder subtree.
-func buildFolderQuery(query, folderID string) string {
-	escaped := strings.ReplaceAll(query, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
-	escapedFolder := strings.ReplaceAll(folderID, `'`, `\'`)
-	return fmt.Sprintf("fullText contains '%s' and '%s' in parents and trashed = false", escaped, escapedFolder)
+// escapeQuery escapes a string for use in a Drive API query.
+func escapeQuery(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	return s
 }
 
-// SearchFiles searches for files matching query within the scoped folder.
+// buildFolderQuery constructs a Drive API query that searches full text within
+// multiple folders (the root and all its subfolders).
+func buildFolderQuery(query string, folderIDs []string) string {
+	escaped := escapeQuery(query)
+	if len(folderIDs) == 1 {
+		return fmt.Sprintf("fullText contains '%s' and '%s' in parents and trashed = false", escaped, escapeQuery(folderIDs[0]))
+	}
+	var parts []string
+	for _, id := range folderIDs {
+		parts = append(parts, fmt.Sprintf("'%s' in parents", escapeQuery(id)))
+	}
+	return fmt.Sprintf("fullText contains '%s' and (%s) and trashed = false", escaped, strings.Join(parts, " or "))
+}
+
+// collectSubfolderIDs recursively finds all subfolder IDs under parentID.
+func (c *FolderScopedClient) collectSubfolderIDs(ctx context.Context, parentID string) ([]string, error) {
+	allIDs := []string{parentID}
+	queue := []string{parentID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		q := fmt.Sprintf("mimeType = 'application/vnd.google-apps.folder' and '%s' in parents and trashed = false", escapeQuery(current))
+		resp, err := c.service.Files.List().
+			Q(q).
+			Fields("files(id)").
+			PageSize(1000).
+			IncludeItemsFromAllDrives(true).
+			SupportsAllDrives(true).
+			Context(ctx).
+			Do()
+		if err != nil {
+			return nil, fmt.Errorf("list subfolders of %s: %w", current, err)
+		}
+		for _, f := range resp.Files {
+			allIDs = append(allIDs, f.Id)
+			queue = append(queue, f.Id)
+		}
+	}
+	return allIDs, nil
+}
+
+// SearchFiles searches for files matching query within the scoped folder and all subfolders.
 func (c *FolderScopedClient) SearchFiles(ctx context.Context, query string) ([]gdrive.DriveFile, error) {
-	q := buildFolderQuery(query, c.folderID)
+	folderIDs, err := c.collectSubfolderIDs(ctx, c.folderID)
+	if err != nil {
+		return nil, fmt.Errorf("collect subfolder IDs: %w", err)
+	}
+
+	q := buildFolderQuery(query, folderIDs)
 	call := c.service.Files.List().
 		Q(q).
 		Fields("files(id, name, mimeType, webViewLink, description)").
