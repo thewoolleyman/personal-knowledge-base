@@ -821,6 +821,32 @@ Rules:
 - CI workflows should call `make` targets where possible.
 - Keep targets simple — each one should be one or two commands, not a script.
 
+## Secrets and Credentials (MANDATORY)
+
+**Agents MUST NEVER set, write, or modify CI/CD secrets.** This is non-negotiable:
+1. NEVER use `gh secret set` or any equivalent to write secrets to CI
+2. NEVER attempt to copy, read, or exfiltrate secrets from local `.env` files to CI
+3. NEVER embed secrets in workflow files, commit messages, or any tracked files
+4. If CI tests fail due to missing secrets, **ask the human** to set them manually
+5. Provide the human with the URL to the settings page and the secret name(s) needed
+6. The human is the ONLY person who enters secret values into CI — agents provide instructions only
+7. If a secret appears corrupted or empty, tell the human and ask them to re-enter it
+8. NEVER assume a secret is "not needed" — if CI requires it, it must be present and valid
+
+**Why:** Agents previously corrupted CI secrets by attempting to set them programmatically. Secret values were redacted/truncated, causing all CI live tests to silently skip for multiple sessions. This wasted significant debugging time.
+
+## CI Test Skipping (MANDATORY — NEVER ALLOWED)
+
+**CI tests MUST NEVER be skipped due to missing secrets or credentials.** This is non-negotiable:
+1. CI workflows MUST fail hard (exit 1) when required secrets are missing — never skip gracefully
+2. NEVER write CI workflow steps with `if: has_secrets == 'true'` patterns that silently skip tests
+3. NEVER treat missing credentials as a "skip" condition — it is always a hard failure
+4. If you see a CI workflow that skips tests when secrets are missing, fix it to fail instead
+5. The test code itself must also use `t.Fatal()` (not `t.Skip()`) for missing env vars
+6. Every CI run must either PASS the live tests or FAIL visibly — silent skips are bugs
+
+**Why:** Silent skipping caused live tests to never actually run on CI for multiple sessions, hiding real bugs. The obsidian subfolder search bug was merged as "working" because the live test that would have caught it was silently skipped.
+
 ## CI Pipeline Rules (MANDATORY)
 
 **CI must be green.** This is non-negotiable:
