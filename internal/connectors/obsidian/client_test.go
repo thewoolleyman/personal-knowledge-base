@@ -51,18 +51,42 @@ func TestNewFolderScopedClient_ServiceError(t *testing.T) {
 	assert.Contains(t, err.Error(), "create drive service")
 }
 
-func TestSearchFiles_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// driveHandler creates an httptest handler that responds to folder listing and search queries.
+// folders maps folderID -> list of parentIDs (for the folder listing call).
+// searchResponse is returned for fullText search queries.
+func driveHandler(t *testing.T, folders map[string][]string, searchResponse string, searchAssertions func(q string)) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		w.Header().Set("Content-Type", "application/json")
+
 		if strings.Contains(q, "mimeType = 'application/vnd.google-apps.folder'") {
-			// Subfolder listing — return empty (no subfolders)
-			fmt.Fprint(w, `{"files":[]}`)
+			// Build folder listing response from the map.
+			var parts []string
+			for id, parents := range folders {
+				var parentJSON []string
+				for _, p := range parents {
+					parentJSON = append(parentJSON, fmt.Sprintf("%q", p))
+				}
+				parts = append(parts, fmt.Sprintf(`{"id":%q,"parents":[%s]}`, id, strings.Join(parentJSON, ",")))
+			}
+			fmt.Fprintf(w, `{"files":[%s]}`, strings.Join(parts, ","))
 			return
 		}
+
+		if searchAssertions != nil {
+			searchAssertions(q)
+		}
+		fmt.Fprint(w, searchResponse)
+	})
+}
+
+func TestSearchFiles_Success(t *testing.T) {
+	// No subfolders — just the root folder.
+	handler := driveHandler(t, map[string][]string{}, `{"files":[{"id":"1","name":"note.md","mimeType":"text/markdown","webViewLink":"https://drive.google.com/1","description":"A vault note"}]}`, func(q string) {
 		assert.Contains(t, q, "in parents")
-		fmt.Fprint(w, `{"files":[{"id":"1","name":"note.md","mimeType":"text/markdown","webViewLink":"https://drive.google.com/1","description":"A vault note"}]}`)
-	}))
+	})
+	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"})
@@ -80,31 +104,19 @@ func TestSearchFiles_Success(t *testing.T) {
 }
 
 func TestSearchFiles_QueriesSubfolders(t *testing.T) {
-	// Simulate a folder tree: root -> subfolder -> file
-	// The search must find files in subfolders, not just direct children.
-	requestCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		q := r.URL.Query().Get("q")
-		w.Header().Set("Content-Type", "application/json")
-
-		if strings.Contains(q, "mimeType = 'application/vnd.google-apps.folder'") {
-			// Subfolder listing request — return one subfolder on first call, empty on second
-			if strings.Contains(q, "'rootFolder' in parents") {
-				fmt.Fprint(w, `{"files":[{"id":"subfolder1","name":"Projects","mimeType":"application/vnd.google-apps.folder"}]}`)
-			} else {
-				fmt.Fprint(w, `{"files":[]}`)
-			}
-			return
-		}
-
-		// fullText search — verify it includes both root AND subfolder in parents
-		assert.Contains(t, q, "in parents", "Query should search in parents")
-		// The query must include both rootFolder and subfolder1
-		assert.Contains(t, q, "rootFolder", "Query should include root folder")
-		assert.Contains(t, q, "subfolder1", "Query should include discovered subfolder")
-		fmt.Fprint(w, `{"files":[{"id":"file1","name":"Grocery List.md","mimeType":"text/markdown","webViewLink":"https://drive.google.com/file1","description":""}]}`)
-	}))
+	// Folder tree: rootFolder -> subfolder1 (Projects)
+	// The single folder-listing call returns subfolder1 with rootFolder as parent.
+	folders := map[string][]string{
+		"subfolder1": {"rootFolder"},
+	}
+	handler := driveHandler(t, folders,
+		`{"files":[{"id":"file1","name":"Grocery List.md","mimeType":"text/markdown","webViewLink":"https://drive.google.com/file1","description":""}]}`,
+		func(q string) {
+			assert.Contains(t, q, "rootFolder", "Query should include root folder")
+			assert.Contains(t, q, "subfolder1", "Query should include discovered subfolder")
+		},
+	)
+	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"})
@@ -118,18 +130,103 @@ func TestSearchFiles_QueriesSubfolders(t *testing.T) {
 	assert.Equal(t, "Grocery List.md", files[0].Name)
 }
 
-func TestSearchFiles_APIError(t *testing.T) {
-	callCount := 0
+func TestSearchFiles_DeepNesting(t *testing.T) {
+	// rootFolder -> sub1 -> sub2 (3 levels deep, still only 1 API call for folders)
+	folders := map[string][]string{
+		"sub1": {"rootFolder"},
+		"sub2": {"sub1"},
+	}
+	handler := driveHandler(t, folders,
+		`{"files":[{"id":"f1","name":"deep.md","mimeType":"text/markdown","webViewLink":"https://example.com","description":""}]}`,
+		func(q string) {
+			assert.Contains(t, q, "rootFolder")
+			assert.Contains(t, q, "sub1")
+			assert.Contains(t, q, "sub2")
+		},
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"})
+	client, err := NewFolderScopedClient(context.Background(), ts, "rootFolder")
+	require.NoError(t, err)
+	client.service.BasePath = srv.URL
+
+	files, err := client.SearchFiles(context.Background(), "test")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+}
+
+func TestSearchFiles_ExcludesUnrelatedFolders(t *testing.T) {
+	// unrelated folder exists in Drive but is NOT under rootFolder
+	folders := map[string][]string{
+		"subfolder1": {"rootFolder"},
+		"unrelated":  {"otherRoot"},
+	}
+	handler := driveHandler(t, folders,
+		`{"files":[]}`,
+		func(q string) {
+			assert.Contains(t, q, "rootFolder")
+			assert.Contains(t, q, "subfolder1")
+			assert.NotContains(t, q, "unrelated", "Should not include folders outside the target subtree")
+			assert.NotContains(t, q, "otherRoot")
+		},
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"})
+	client, err := NewFolderScopedClient(context.Background(), ts, "rootFolder")
+	require.NoError(t, err)
+	client.service.BasePath = srv.URL
+
+	_, err = client.SearchFiles(context.Background(), "test")
+	require.NoError(t, err)
+}
+
+func TestSearchFiles_FolderListingPagination(t *testing.T) {
+	// Folder listing returns results across two pages.
+	page := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		q := r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(q, "mimeType = 'application/vnd.google-apps.folder'") {
+			pt := r.URL.Query().Get("pageToken")
+			if pt == "" && page == 0 {
+				page++
+				fmt.Fprint(w, `{"files":[{"id":"sub1","parents":["rootFolder"]}],"nextPageToken":"page2"}`)
+			} else {
+				fmt.Fprint(w, `{"files":[{"id":"sub2","parents":["sub1"]}]}`)
+			}
+			return
+		}
+		// Search — verify all folders included
+		assert.Contains(t, q, "rootFolder")
+		assert.Contains(t, q, "sub1")
+		assert.Contains(t, q, "sub2")
+		fmt.Fprint(w, `{"files":[]}`)
+	}))
+	defer srv.Close()
+
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"})
+	client, err := NewFolderScopedClient(context.Background(), ts, "rootFolder")
+	require.NoError(t, err)
+	client.service.BasePath = srv.URL
+
+	_, err = client.SearchFiles(context.Background(), "test")
+	require.NoError(t, err)
+}
+
+func TestSearchFiles_APIError(t *testing.T) {
+	// Folder listing succeeds, search fails.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(q, "mimeType = 'application/vnd.google-apps.folder'") {
-			// Subfolder listing succeeds
 			fmt.Fprint(w, `{"files":[]}`)
 			return
 		}
-		// Search fails
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -144,9 +241,8 @@ func TestSearchFiles_APIError(t *testing.T) {
 	assert.Contains(t, err.Error(), "drive files.list (obsidian)")
 }
 
-func TestSearchFiles_SubfolderListingError(t *testing.T) {
+func TestSearchFiles_FolderListingError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// All requests fail — subfolder listing will fail first
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()

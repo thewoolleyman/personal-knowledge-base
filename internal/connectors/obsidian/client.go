@@ -52,33 +52,55 @@ func buildFolderQuery(query string, folderIDs []string) string {
 	return fmt.Sprintf("fullText contains '%s' and (%s) and trashed = false", escaped, strings.Join(parts, " or "))
 }
 
-// collectSubfolderIDs recursively finds all subfolder IDs under parentID.
+// collectSubfolderIDs finds all subfolder IDs under parentID using a single
+// API call to list all folders in Drive, then filters client-side.
+// This is O(1) API calls regardless of folder tree depth.
 func (c *FolderScopedClient) collectSubfolderIDs(ctx context.Context, parentID string) ([]string, error) {
-	allIDs := []string{parentID}
-	queue := []string{parentID}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		q := fmt.Sprintf("mimeType = 'application/vnd.google-apps.folder' and '%s' in parents and trashed = false", escapeQuery(current))
-		resp, err := c.service.Files.List().
-			Q(q).
-			Fields("files(id)").
+	// One API call: get all folders with their parent IDs.
+	var allFolders []*drive.File
+	pageToken := ""
+	for {
+		call := c.service.Files.List().
+			Q("mimeType = 'application/vnd.google-apps.folder' and trashed = false").
+			Fields("nextPageToken, files(id, parents)").
 			PageSize(1000).
 			IncludeItemsFromAllDrives(true).
 			SupportsAllDrives(true).
-			Context(ctx).
-			Do()
-		if err != nil {
-			return nil, fmt.Errorf("list subfolders of %s: %w", current, err)
+			Context(ctx)
+		if pageToken != "" {
+			call = call.PageToken(pageToken)
 		}
-		for _, f := range resp.Files {
-			allIDs = append(allIDs, f.Id)
-			queue = append(queue, f.Id)
+		resp, err := call.Do()
+		if err != nil {
+			return nil, fmt.Errorf("list all folders: %w", err)
+		}
+		allFolders = append(allFolders, resp.Files...)
+		if resp.NextPageToken == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+
+	// Build parent -> children map.
+	children := make(map[string][]string)
+	for _, f := range allFolders {
+		for _, p := range f.Parents {
+			children[p] = append(children[p], f.Id)
 		}
 	}
-	return allIDs, nil
+
+	// BFS from parentID to find all descendants.
+	result := []string{parentID}
+	queue := []string{parentID}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, child := range children[current] {
+			result = append(result, child)
+			queue = append(queue, child)
+		}
+	}
+	return result, nil
 }
 
 // SearchFiles searches for files matching query within the scoped folder and all subfolders.
