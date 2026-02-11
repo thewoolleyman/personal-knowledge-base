@@ -98,9 +98,9 @@ func TestEngine_Search_AllFail(t *testing.T) {
 
 func TestEngine_SearchWithSources_FiltersConnectors(t *testing.T) {
 	drive := new(MockConnector)
-	drive.On("Name").Return("gdrive")
+	drive.On("Name").Return("google-drive")
 	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
-		{Title: "Drive Doc", Source: "gdrive"},
+		{Title: "Drive Doc", Source: "google-drive"},
 	}, nil)
 
 	gm := new(MockConnector)
@@ -108,7 +108,7 @@ func TestEngine_SearchWithSources_FiltersConnectors(t *testing.T) {
 	// gmail.Search should NOT be called
 
 	engine := New(drive, gm)
-	results, err := engine.SearchWithSources(context.Background(), "q", []string{"gdrive"})
+	results, err := engine.SearchWithSources(context.Background(), "q", []string{"google-drive"})
 
 	require.NoError(t, err)
 	require.Len(t, results, 1)
@@ -119,9 +119,9 @@ func TestEngine_SearchWithSources_FiltersConnectors(t *testing.T) {
 
 func TestEngine_SearchWithSources_NilSearchesAll(t *testing.T) {
 	drive := new(MockConnector)
-	drive.On("Name").Return("gdrive")
+	drive.On("Name").Return("google-drive")
 	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
-		{Title: "Drive Doc", Source: "gdrive"},
+		{Title: "Drive Doc", Source: "google-drive"},
 	}, nil)
 
 	gm := new(MockConnector)
@@ -139,9 +139,9 @@ func TestEngine_SearchWithSources_NilSearchesAll(t *testing.T) {
 
 func TestEngine_SearchWithSources_EmptySearchesAll(t *testing.T) {
 	drive := new(MockConnector)
-	drive.On("Name").Return("gdrive")
+	drive.On("Name").Return("google-drive")
 	drive.On("Search", mock.Anything, "q").Return([]connectors.Result{
-		{Title: "Drive Doc", Source: "gdrive"},
+		{Title: "Drive Doc", Source: "google-drive"},
 	}, nil)
 
 	engine := New(drive)
@@ -153,7 +153,7 @@ func TestEngine_SearchWithSources_EmptySearchesAll(t *testing.T) {
 
 func TestEngine_SearchWithSources_UnknownSourceIgnored(t *testing.T) {
 	drive := new(MockConnector)
-	drive.On("Name").Return("gdrive")
+	drive.On("Name").Return("google-drive")
 	// drive.Search should NOT be called since "nonexistent" doesn't match
 
 	engine := New(drive)
@@ -165,13 +165,13 @@ func TestEngine_SearchWithSources_UnknownSourceIgnored(t *testing.T) {
 
 func TestEngine_ConnectorNames(t *testing.T) {
 	drive := new(MockConnector)
-	drive.On("Name").Return("gdrive")
+	drive.On("Name").Return("google-drive")
 	gm := new(MockConnector)
 	gm.On("Name").Return("gmail")
 
 	engine := New(drive, gm)
 	names := engine.ConnectorNames()
-	assert.ElementsMatch(t, []string{"gdrive", "gmail"}, names)
+	assert.ElementsMatch(t, []string{"google-drive", "gmail"}, names)
 }
 
 func TestEngine_ConnectorNames_Empty(t *testing.T) {

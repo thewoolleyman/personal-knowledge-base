@@ -327,7 +327,7 @@ func TestAcceptance_ServeSearchEndpoint_SourceFiltering(t *testing.T) {
 	baseURL := "http://" + addr
 
 	// /search with sources param should return valid JSON
-	resp, err := http.Get(baseURL + "/search?q=test&sources=gdrive")
+	resp, err := http.Get(baseURL + "/search?q=test&sources=google-drive")
 	require.NoError(t, err)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -383,7 +383,7 @@ func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, html, "<html", "should serve HTML page")
 	assert.Contains(t, html, "Search", "should contain search UI")
-	assert.Contains(t, html, "gdrive", "should have gdrive checkbox")
+	assert.Contains(t, html, "google-drive", "should have google-drive checkbox")
 	assert.Contains(t, html, "gmail", "should have gmail checkbox")
 }
 
@@ -392,11 +392,23 @@ func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
 // SearchOutput_IncludesSourceTag, etc.) live in tests/live/live_test.go
 // and are run via `make test-live`.
 
+func TestAcceptance_SearchSourcesHelpText_UsesCanonicalNames(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "search", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "google-drive",
+		"Help text should show canonical connector name 'google-drive'")
+	assert.NotContains(t, stdout, "gdrive",
+		"Help text must not use shorthand 'gdrive' — it doesn't match connector.Name()")
+}
+
 func TestAcceptance_SearchWithSourcesFlag_FiltersResults(t *testing.T) {
 	binary := buildBinary(t)
 
 	// Test --sources flag is recognized (even without credentials)
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "gdrive", "test")
+	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive", "test")
 	combined := stdout + stderr
 
 	// Should not error on the flag itself - flag is valid
@@ -411,7 +423,7 @@ func TestAcceptance_SearchWithMultipleSources_AcceptsCommaList(t *testing.T) {
 	binary := buildBinary(t)
 
 	// Test multiple sources with comma-separated list
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "gdrive,gmail", "test")
+	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive,gmail", "test")
 	combined := stdout + stderr
 
 	// Should not error on the flag format

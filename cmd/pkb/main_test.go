@@ -202,13 +202,13 @@ func TestSearchCommand_SourcesFlag_PassesSingleSource(t *testing.T) {
 	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
 		receivedSources = sources
 		return []connectors.Result{
-			{Title: "Test", URL: "https://example.com", Source: "gdrive"},
+			{Title: "Test", URL: "https://example.com", Source: "google-drive"},
 		}, nil
 	}
 	var buf bytes.Buffer
-	err := runWithOutput([]string{"search", "--sources", "gdrive", "test query"}, mockSearch, &buf)
+	err := runWithOutput([]string{"search", "--sources", "google-drive", "test query"}, mockSearch, &buf)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"gdrive"}, receivedSources)
+	assert.Equal(t, []string{"google-drive"}, receivedSources)
 }
 
 func TestSearchCommand_SourcesFlag_PassesMultipleSources(t *testing.T) {
@@ -216,13 +216,13 @@ func TestSearchCommand_SourcesFlag_PassesMultipleSources(t *testing.T) {
 	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
 		receivedSources = sources
 		return []connectors.Result{
-			{Title: "Test", URL: "https://example.com", Source: "gdrive"},
+			{Title: "Test", URL: "https://example.com", Source: "google-drive"},
 		}, nil
 	}
 	var buf bytes.Buffer
-	err := runWithOutput([]string{"search", "--sources", "gdrive,gmail", "test query"}, mockSearch, &buf)
+	err := runWithOutput([]string{"search", "--sources", "google-drive,gmail", "test query"}, mockSearch, &buf)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"gdrive", "gmail"}, receivedSources)
+	assert.Equal(t, []string{"google-drive", "gmail"}, receivedSources)
 }
 
 func TestSearchCommand_SourcesFlag_OmittedPassesNil(t *testing.T) {
@@ -669,7 +669,7 @@ func TestServeSearch_WithSources_PassesThroughFilter(t *testing.T) {
 	mockSearch := func(_ context.Context, _ string, sources []string) ([]connectors.Result, error) {
 		capturedSources = sources
 		return []connectors.Result{
-			{Title: "Filtered", Source: "gdrive"},
+			{Title: "Filtered", Source: "google-drive"},
 		}, nil
 	}
 
@@ -681,12 +681,12 @@ func TestServeSearch_WithSources_PassesThroughFilter(t *testing.T) {
 
 	addr := waitForServe(t, buf, errCh)
 
-	resp, err := http.Get("http://" + addr + "/search?q=test&sources=gdrive")
+	resp, err := http.Get("http://" + addr + "/search?q=test&sources=google-drive")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, []string{"gdrive"}, capturedSources)
+	assert.Equal(t, []string{"google-drive"}, capturedSources)
 
 	testCh <- syscall.SIGINT
 	select {
@@ -760,7 +760,7 @@ func TestServeCommand_ServesWebUI(t *testing.T) {
 	html := string(body)
 	assert.Contains(t, html, "<html")
 	assert.Contains(t, html, "Search")
-	assert.Contains(t, html, "gdrive")
+	assert.Contains(t, html, "google-drive")
 
 	testCh <- syscall.SIGINT
 	select {

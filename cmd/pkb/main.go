@@ -178,7 +178,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: gdrive,gmail)")
+	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail)")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",

@@ -12,7 +12,7 @@ test("web UI loads with search form and source checkboxes", async ({
 }) => {
   await page.goto("/");
   await expect(page.locator("input#query")).toBeVisible();
-  await expect(page.locator('input[value="gdrive"]')).toBeVisible();
+  await expect(page.locator('input[value="google-drive"]')).toBeVisible();
   await expect(page.locator('input[value="gmail"]')).toBeVisible();
 });
 
@@ -20,7 +20,7 @@ test("search returns results from Google Drive", async ({ page }) => {
   await page.goto("/");
 
   // Enable gdrive, disable gmail
-  const gdriveCheckbox = page.locator('input[value="gdrive"]');
+  const gdriveCheckbox = page.locator('input[value="google-drive"]');
   const gmailCheckbox = page.locator('input[value="gmail"]');
   if (!(await gdriveCheckbox.isChecked())) await gdriveCheckbox.check();
   if (await gmailCheckbox.isChecked()) await gmailCheckbox.uncheck();
@@ -42,7 +42,7 @@ test("search returns results from Gmail", async ({ page }) => {
   await page.goto("/");
 
   // Enable gmail, disable gdrive
-  const gdriveCheckbox = page.locator('input[value="gdrive"]');
+  const gdriveCheckbox = page.locator('input[value="google-drive"]');
   const gmailCheckbox = page.locator('input[value="gmail"]');
   if (await gdriveCheckbox.isChecked()) await gdriveCheckbox.uncheck();
   if (!(await gmailCheckbox.isChecked())) await gmailCheckbox.check();
@@ -64,7 +64,7 @@ test("search with both sources returns results from both", async ({
   await page.goto("/");
 
   // Enable both sources
-  const gdriveCheckbox = page.locator('input[value="gdrive"]');
+  const gdriveCheckbox = page.locator('input[value="google-drive"]');
   const gmailCheckbox = page.locator('input[value="gmail"]');
   if (!(await gdriveCheckbox.isChecked())) await gdriveCheckbox.check();
   if (!(await gmailCheckbox.isChecked())) await gmailCheckbox.check();

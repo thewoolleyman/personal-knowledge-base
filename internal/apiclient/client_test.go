@@ -14,7 +14,7 @@ import (
 
 func TestSearch_ReturnsResults(t *testing.T) {
 	want := []connectors.Result{
-		{Title: "Doc 1", Snippet: "snippet", URL: "https://example.com/1", Source: "gdrive"},
+		{Title: "Doc 1", Snippet: "snippet", URL: "https://example.com/1", Source: "google-drive"},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/search", r.URL.Path)
@@ -32,27 +32,27 @@ func TestSearch_ReturnsResults(t *testing.T) {
 
 func TestSearch_SendsSourcesParam(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "gdrive", r.URL.Query().Get("sources"))
+		assert.Equal(t, "google-drive", r.URL.Query().Get("sources"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]connectors.Result{})
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, srv.Client())
-	_, err := c.Search(context.Background(), "q", []string{"gdrive"})
+	_, err := c.Search(context.Background(), "q", []string{"google-drive"})
 	require.NoError(t, err)
 }
 
 func TestSearch_SendsMultipleSources(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "gdrive,gmail", r.URL.Query().Get("sources"))
+		assert.Equal(t, "google-drive,gmail", r.URL.Query().Get("sources"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]connectors.Result{})
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, srv.Client())
-	_, err := c.Search(context.Background(), "q", []string{"gdrive", "gmail"})
+	_, err := c.Search(context.Background(), "q", []string{"google-drive", "gmail"})
 	require.NoError(t, err)
 }
 

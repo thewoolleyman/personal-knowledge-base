@@ -107,48 +107,30 @@ func TestLive_CLISearch_Gmail(t *testing.T) {
 		"Result should show gmail source")
 }
 
-func TestLive_CLISearch_SourceFilter_GDriveOnly(t *testing.T) {
+func TestLive_CLISearch_SourceFilter_GoogleDriveOnly(t *testing.T) {
 	requireCredentials(t)
 	binary := buildBinary(t)
 
-	// Search with --sources not available on CLI yet, so search via serve endpoint.
-	// Instead, just verify the default search returns results from both.
-	// This test focuses on verifying gdrive results exist.
-	stdout, stderr, exitCode := runPKB(t, binary, "search", testQuery)
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "google-drive", testQuery)
 
 	require.Equal(t, 0, exitCode, "stderr: %s", stderr)
-
-	// Parse numbered results and verify at least one is from google-drive
-	lines := strings.Split(stdout, "\n")
-	foundGDrive := false
-	for _, line := range lines {
-		if strings.Contains(line, "[google-drive]") {
-			foundGDrive = true
-			break
-		}
-	}
-	assert.True(t, foundGDrive,
-		"Expected at least one google-drive result, output:\n%s", stdout)
+	assert.Contains(t, stdout, "[google-drive]",
+		"Expected google-drive results when filtering by --sources google-drive")
+	assert.NotContains(t, stdout, "[gmail]",
+		"Should not contain gmail results when filtering to google-drive only")
 }
 
 func TestLive_CLISearch_SourceFilter_GmailOnly(t *testing.T) {
 	requireCredentials(t)
 	binary := buildBinary(t)
 
-	stdout, stderr, exitCode := runPKB(t, binary, "search", testQuery)
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "gmail", testQuery)
 
 	require.Equal(t, 0, exitCode, "stderr: %s", stderr)
-
-	lines := strings.Split(stdout, "\n")
-	foundGmail := false
-	for _, line := range lines {
-		if strings.Contains(line, "[gmail]") {
-			foundGmail = true
-			break
-		}
-	}
-	assert.True(t, foundGmail,
-		"Expected at least one gmail result, output:\n%s", stdout)
+	assert.Contains(t, stdout, "[gmail]",
+		"Expected gmail results when filtering by --sources gmail")
+	assert.NotContains(t, stdout, "[google-drive]",
+		"Should not contain google-drive results when filtering to gmail only")
 }
 
 func TestLive_ServeSearch_BothSources(t *testing.T) {
