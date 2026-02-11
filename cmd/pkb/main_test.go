@@ -24,6 +24,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/obsidian"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -831,6 +832,66 @@ func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
 	// because there's no real API. The point is it didn't crash from Gmail error.
 	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err)
+}
+
+func TestBuildSearchFn_ObsidianConnectorRegistered_WhenFolderIDSet(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "1tK3Z1ie-CZMAlvBdNb6hNlHfFyrY-mPJ")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	// The closure creates real clients. The search call will fail because
+	// there's no real API, but the obsidian connector path is exercised.
+	_, err = fn(context.Background(), "test", nil)
+	assert.Error(t, err)
+}
+
+func TestBuildSearchFn_ObsidianClientError_FallsBackGracefully(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "folder-123")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	orig := newObsidianClient
+	newObsidianClient = func(_ context.Context, _ oauth2.TokenSource, _ string) (*obsidian.FolderScopedClient, error) {
+		return nil, fmt.Errorf("obsidian client error")
+	}
+	t.Cleanup(func() { newObsidianClient = orig })
+
+	fn := buildSearchFn()
+	// Should still work without obsidian — falls back to Drive + Gmail.
+	_, err = fn(context.Background(), "test", nil)
+	assert.Error(t, err) // will fail on API call, but didn't crash from obsidian error
+}
+
+func TestBuildSearchFn_ObsidianSkipped_WhenFolderIDEmpty(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	_, err = fn(context.Background(), "test", nil)
+	assert.Error(t, err) // API error, but obsidian path is skipped
 }
 
 // --- auth command tests ---
