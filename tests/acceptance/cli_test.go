@@ -433,6 +433,40 @@ func TestAcceptance_SearchWithMultipleSources_AcceptsCommaList(t *testing.T) {
 		"Should recognize --sources flag with multiple values")
 }
 
+func TestAcceptance_SearchHelpText_ShowsObsidianSource(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "search", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "obsidian",
+		"Help text should list 'obsidian' as a valid source")
+}
+
+func TestAcceptance_SearchWithObsidianSource_AcceptsFlag(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "obsidian", "test")
+	combined := stdout + stderr
+
+	assert.NotContains(t, combined, "unknown flag",
+		"Should recognize --sources obsidian flag")
+	assert.NotContains(t, combined, "Error: unknown command",
+		"Should recognize search command with --sources obsidian")
+}
+
+func TestAcceptance_SearchWithAllThreeSources_AcceptsCommaList(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive,gmail,obsidian", "test")
+	combined := stdout + stderr
+
+	assert.NotContains(t, combined, "invalid argument",
+		"Should accept comma-separated source list with all three sources")
+	assert.NotContains(t, combined, "unknown flag",
+		"Should recognize --sources flag with three values")
+}
+
 func TestAcceptance_VersionWithoutBuild_ShowsDevVersion(t *testing.T) {
 	// Build without version ldflags - should show "dev"
 	binary := buildBinary(t)

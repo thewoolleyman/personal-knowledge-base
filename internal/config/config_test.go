@@ -99,6 +99,20 @@ func TestLoad_DotenvFilePopulatesConfig(t *testing.T) {
 	assert.Equal(t, "dotenv-secret", cfg.GoogleClientSecret)
 }
 
+func TestLoad_ObsidianFolderID(t *testing.T) {
+	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "1tK3Z1ie-CZMAlvBdNb6hNlHfFyrY-mPJ")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "1tK3Z1ie-CZMAlvBdNb6hNlHfFyrY-mPJ", cfg.ObsidianFolderID)
+}
+
+func TestLoad_ObsidianFolderID_EmptyByDefault(t *testing.T) {
+	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.ObsidianFolderID)
+}
+
 func TestLoad_EnvVarsTakePrecedenceOverDotenv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

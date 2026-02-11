@@ -23,6 +23,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/obsidian"
 	"github.com/cwoolley/personal-knowledge-base/internal/search"
 	"github.com/cwoolley/personal-knowledge-base/internal/server"
 	"github.com/cwoolley/personal-knowledge-base/internal/tui"
@@ -61,6 +62,9 @@ var newAPIClient = gdrive.NewAPIClient
 
 // newGmailAPIClient creates a Gmail API client. Overridden in tests.
 var newGmailAPIClient = gmail.NewAPIClient
+
+// newObsidianClient creates a folder-scoped Drive client for Obsidian. Overridden in tests.
+var newObsidianClient = obsidian.NewFolderScopedClient
 
 // openBrowser opens a URL in the default browser. Overridden in tests.
 var openBrowser = func(rawURL string) error {
@@ -178,7 +182,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail)")
+	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail,obsidian)")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
@@ -333,16 +337,24 @@ func buildSearchFn() SearchFunc {
 
 		driveConnector := gdrive.NewConnector(client)
 
+		// Collect all connectors; start with Drive (always available).
+		allConnectors := []connectors.Connector{driveConnector}
+
 		// Create Gmail connector with the same token source.
 		gmailClient, err := newGmailAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
-		if err != nil {
-			// Gmail is optional — fall back to Drive only.
-			engine := search.New(driveConnector)
-			return engine.SearchWithSources(ctx, query, sources)
+		if err == nil {
+			allConnectors = append(allConnectors, gmail.NewConnector(gmailClient))
 		}
-		gmailConnector := gmail.NewConnector(gmailClient)
 
-		engine := search.New(driveConnector, gmailConnector)
+		// Create Obsidian connector if folder ID is configured.
+		if appCfg.ObsidianFolderID != "" {
+			obsClient, err := newObsidianClient(ctx, oauthCfg.TokenSource(ctx, tok), appCfg.ObsidianFolderID)
+			if err == nil {
+				allConnectors = append(allConnectors, obsidian.NewConnector(obsClient, appCfg.ObsidianFolderID))
+			}
+		}
+
+		engine := search.New(allConnectors...)
 		return engine.SearchWithSources(ctx, query, sources)
 	}
 }
