@@ -99,6 +99,23 @@ All consumers (CLI, TUI, web UI) go through the same HTTP API. The `search` and 
 
 Slack, Notion, Google Keep, Dropbox, S3
 
+### Obsidian vault mirroring
+
+A launchd agent rsyncs your Obsidian vault to a Google Drive mount every 10 minutes. Google Drive indexes the files, making them searchable via the `google-drive` connector.
+
+```bash
+# Install and start the mirror (interactive — prompts for confirmation)
+bash docs/setup-obsidian-gdrive-mirror.sh
+
+# Verify it's running
+launchctl print gui/$(id -u)/com.user.rsync-obsidian-to-gdrive
+
+# Check logs
+tail ~/.local/log/rsync-obsidian.log
+```
+
+See [docs/obsidian-vault-mirroring-notes.md](docs/obsidian-vault-mirroring-notes.md) for details.
+
 ## Development
 
 Strict TDD (Red-Green-Refactor). Every line of implementation code exists because a test demanded it.
