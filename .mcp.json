@@ -17,9 +17,12 @@
       "autoStart": false
     },
     "playwright": {
-      "command": "npx",
+      "command": "mise",
       "args": [
-        "@anthropic-ai/playwright-mcp"
+        "exec",
+        "--",
+        "npx",
+        "@playwright/mcp@latest"
       ]
     }
   }
