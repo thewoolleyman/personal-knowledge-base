@@ -159,6 +159,7 @@ jobs:
           PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
           PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
           PKB_TOKEN_PATH: ~/.config/pkb/token.json
+          PKB_OBSIDIAN_FOLDER_ID: ${{ secrets.PKB_OBSIDIAN_FOLDER_ID }}
         run: make test-live
 
   e2e-tests:

@@ -156,3 +156,22 @@ func TestLive_ServeSearch_BothSources(t *testing.T) {
 
 	fmt.Fprintf(os.Stderr, "\n--- Live search output ---\n%s\n", stdout)
 }
+
+func TestLive_CLISearch_ObsidianSource(t *testing.T) {
+	requireCredentials(t)
+	if os.Getenv("PKB_OBSIDIAN_FOLDER_ID") == "" {
+		t.Fatalf("PKB_OBSIDIAN_FOLDER_ID not set — add it to your .env file")
+	}
+	binary := buildBinary(t)
+
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "obsidian", testQuery)
+
+	require.Equal(t, 0, exitCode,
+		"search should succeed, stderr: %s", stderr)
+	require.NotEmpty(t, stdout, "Expected results in stdout")
+
+	assert.Contains(t, stdout, "PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE (Obsidian)",
+		"Obsidian source should find the test page in the Obsidian vault subfolder")
+	assert.Contains(t, stdout, "[obsidian]",
+		"Result should show obsidian source tag")
+}
