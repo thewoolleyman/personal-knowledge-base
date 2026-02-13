@@ -10,6 +10,9 @@
 set -euo pipefail
 
 # Ensure mise-managed tools (node/npx) are on PATH for non-interactive shells
+# Pin to last working version (alpha.39 has broken @ruvector/gnn semver dep)
+CLI_PKG="@claude-flow/cli@3.1.0-alpha.38"
+
 eval "$(mise activate bash 2>/dev/null)" || true
 
 INPUT="$(cat 2>/dev/null)" || INPUT='{}'
@@ -28,7 +31,7 @@ FOUND=""
 # ── Strategy 1: Semantic search via memory DB ──────────────────────
 DB=".swarm/memory.db"
 if [ -f "$DB" ] && [ -s "$DB" ]; then
-  RESULTS="$(npx @claude-flow/cli@latest memory search --query="$QUERY" --limit=5 2>/dev/null)" || RESULTS=""
+  RESULTS="$(npx "$CLI_PKG" memory search --query="$QUERY" --limit=5 2>/dev/null)" || RESULTS=""
   if printf '%s' "$RESULTS" | grep -q '|.*|.*|.*|'; then
     ROW_COUNT="$(printf '%s' "$RESULTS" | grep '^|' | grep -vc '^|[-+ ]*|$' || true)"
     DATA_ROWS=$(( ROW_COUNT - 1 ))

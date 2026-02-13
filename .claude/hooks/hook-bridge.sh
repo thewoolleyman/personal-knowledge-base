@@ -8,6 +8,9 @@
 
 MODE="${1:-}"
 
+# Pin to last working version (alpha.39 has broken @ruvector/gnn semver dep)
+CLI_PKG="@claude-flow/cli@3.1.0-alpha.38"
+
 # Ensure mise-managed tools (node/npx) are on PATH for non-interactive shells
 eval "$(mise activate bash 2>/dev/null)" || true
 
@@ -25,58 +28,58 @@ case "$MODE" in
   pre-edit)
     FILE=$(jf '.tool_input.file_path')
     [ -z "$FILE" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-edit --file="$FILE"
+    exec npx "$CLI_PKG" hooks pre-edit --file="$FILE"
     ;;
 
   pre-command)
     CMD=$(jf '.tool_input.command')
     [ -z "$CMD" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-command --command="$CMD"
+    exec npx "$CLI_PKG" hooks pre-command --command="$CMD"
     ;;
 
   pre-task)
     DESC=$(jf '.tool_input.prompt // .tool_input.description')
     [ -z "$DESC" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks pre-task --description="$DESC"
+    exec npx "$CLI_PKG" hooks pre-task --description="$DESC"
     ;;
 
   # ── PostToolUse hooks ─────────────────────────────────────
   post-edit)
     FILE=$(jf '.tool_input.file_path')
     [ -z "$FILE" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks post-edit --file="$FILE" --success=true
+    exec npx "$CLI_PKG" hooks post-edit --file="$FILE" --success=true
     ;;
 
   post-command)
     CMD=$(jf '.tool_input.command')
     [ -z "$CMD" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks post-command --command="$CMD" --success=true
+    exec npx "$CLI_PKG" hooks post-command --command="$CMD" --success=true
     ;;
 
   post-task)
     AGENT_ID=$(jf '.tool_input.description // .tool_input.prompt')
     [ -z "$AGENT_ID" ] && AGENT_ID="unknown"
-    exec npx @claude-flow/cli@latest hooks post-task --task-id="$AGENT_ID" --success=true
+    exec npx "$CLI_PKG" hooks post-task --task-id="$AGENT_ID" --success=true
     ;;
 
   # ── UserPromptSubmit ──────────────────────────────────────
   route)
     PROMPT=$(jf '.prompt')
     [ -z "$PROMPT" ] && exit 0
-    exec npx @claude-flow/cli@latest hooks route --task="$PROMPT"
+    exec npx "$CLI_PKG" hooks route --task="$PROMPT"
     ;;
 
   # ── SessionStart ──────────────────────────────────────────
   daemon-start)
-    exec npx @claude-flow/cli@latest daemon start --quiet
+    exec npx "$CLI_PKG" daemon start --quiet
     ;;
 
   session-restore)
     SID=$(jf '.session_id')
     if [ -n "$SID" ]; then
-      exec npx @claude-flow/cli@latest hooks session-restore --session-id="$SID"
+      exec npx "$CLI_PKG" hooks session-restore --session-id="$SID"
     else
-      exec npx @claude-flow/cli@latest hooks session-restore --latest
+      exec npx "$CLI_PKG" hooks session-restore --latest
     fi
     ;;
 
@@ -85,7 +88,7 @@ case "$MODE" in
     # Call the real CLI stop-check which checks for unconsolidated patterns
     # Exit code 2 = block Claude from stopping (patterns need consolidation)
     # Exit code 0 = ok to stop
-    npx @claude-flow/cli@latest hooks stop-check 2>/dev/null
+    npx "$CLI_PKG" hooks stop-check 2>/dev/null
     RC=$?
     if [ "$RC" -eq 127 ]; then
         # CLI not found -- allow stop
@@ -97,7 +100,7 @@ case "$MODE" in
 
   # ── SessionEnd ──────────────────────────────────────────────
   session-end)
-    npx @claude-flow/cli@latest hooks session-end \
+    npx "$CLI_PKG" hooks session-end \
       --generate-summary=true \
       --persist-state=true \
       --export-metrics=true 2>/dev/null || true
@@ -107,7 +110,7 @@ case "$MODE" in
   notify)
     MSG=$(jf '.message // .notification_message // .content')
     [ -z "$MSG" ] && exit 0
-    exec npx @claude-flow/cli@latest memory store --namespace=notifications --key="notify" --value="$MSG"
+    exec npx "$CLI_PKG" memory store --namespace=notifications --key="notify" --value="$MSG"
     ;;
 
   *)
