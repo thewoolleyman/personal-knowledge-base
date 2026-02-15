@@ -304,6 +304,19 @@ func TestServeCommand_TailscaleMode_ResolvesAddr(t *testing.T) {
 	}
 }
 
+func TestServeCommand_ConfigLoadError(t *testing.T) {
+	orig := loadConfig
+	loadConfig = func() (*config.Config, error) {
+		return nil, fmt.Errorf("config boom")
+	}
+	t.Cleanup(func() { loadConfig = orig })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"serve"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "load config")
+}
+
 func TestServeCommand_TailscaleMode_ErrorShowsHelpfulMessage(t *testing.T) {
 	t.Setenv("PKB_TAILSCALE", "true")
 

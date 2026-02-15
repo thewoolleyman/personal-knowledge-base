@@ -92,6 +92,18 @@ func TestResolveAddr_ExtractsPortFromFullAddr(t *testing.T) {
 	assert.Equal(t, "100.64.0.1:8080", addr)
 }
 
+func TestResolveAddr_InvalidAddr_DefaultsTo8080(t *testing.T) {
+	orig := runTailscaleIP
+	runTailscaleIP = func() (string, error) {
+		return "100.64.0.1\n", nil
+	}
+	t.Cleanup(func() { runTailscaleIP = orig })
+
+	addr, err := ResolveAddr("no-colon-here")
+	require.NoError(t, err)
+	assert.Equal(t, "100.64.0.1:8080", addr)
+}
+
 func TestResolveAddr_ErrorPropagates(t *testing.T) {
 	orig := runTailscaleIP
 	runTailscaleIP = func() (string, error) {
