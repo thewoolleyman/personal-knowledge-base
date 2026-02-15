@@ -270,6 +270,91 @@ func TestServeCommand_IsRegistered(t *testing.T) {
 	assert.Equal(t, ":8080", f.DefValue)
 }
 
+func TestServeCommand_TailscaleMode_ResolvesAddr(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "true")
+
+	origResolve := resolveTailscaleAddr
+	resolveTailscaleAddr = func(addr string) (string, error) {
+		return "127.0.0.1:0", nil
+	}
+	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve"}, noopSearch, buf)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+	// Verify resolveTailscaleAddr was used (bound to 127.0.0.1, not [::])
+	assert.Contains(t, addr, "127.0.0.1")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+func TestServeCommand_TailscaleMode_ErrorShowsHelpfulMessage(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "true")
+
+	origResolve := resolveTailscaleAddr
+	resolveTailscaleAddr = func(addr string) (string, error) {
+		return "", fmt.Errorf("failed to get tailscale IP (is tailscale running?): exit status 1")
+	}
+	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"serve"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "tailscale")
+}
+
+func TestServeCommand_NoTailscale_DefaultBehavior(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "")
+
+	// Verify resolveTailscaleAddr is NOT called when Tailscale is disabled
+	origResolve := resolveTailscaleAddr
+	called := false
+	resolveTailscaleAddr = func(addr string) (string, error) {
+		called = true
+		return addr, nil
+	}
+	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, noopSearch, buf)
+	}()
+
+	_ = waitForServe(t, buf, errCh)
+	assert.False(t, called, "resolveTailscaleAddr should not be called when PKB_TAILSCALE is not set")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
 // BUG-010: The "interactive" subcommand is registered with alias "tui".
 func TestInteractiveCommand_IsRegistered(t *testing.T) {
 	mockSearch := func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {

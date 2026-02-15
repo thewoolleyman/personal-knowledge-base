@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	TokenPath          string
 	ObsidianFolderID   string
 	NotionToken        string
+	Tailscale          bool
 }
 
 // loadDotenv loads environment variables from a .env file if present.
@@ -29,6 +31,7 @@ func Load() (*Config, error) {
 		TokenPath:          envOr("PKB_TOKEN_PATH", defaultTokenPath()),
 		ObsidianFolderID:   os.Getenv("PKB_OBSIDIAN_FOLDER_ID"),
 		NotionToken:        os.Getenv("PKB_NOTION_TOKEN"),
+		Tailscale:          strings.EqualFold(os.Getenv("PKB_TAILSCALE"), "true"),
 	}
 	return cfg, nil
 }

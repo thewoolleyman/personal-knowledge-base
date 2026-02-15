@@ -287,6 +287,135 @@ All config is via environment variables:
 | `PKB_TOKEN_PATH` | `~/.config/pkb/token.json` | Path to store OAuth token |
 | `PKB_OBSIDIAN_FOLDER_ID` | (none) | Google Drive folder ID for Obsidian vault (enables `obsidian` source) |
 | `PKB_NOTION_TOKEN` | (none) | Notion integration token (enables `notion` source) |
+| `PKB_TAILSCALE` | `false` | Bind server to Tailscale interface for secure remote access |
+
+## Remote Access via Tailscale
+
+PKB can be securely accessed from anywhere (phone, laptop, other machines) using [Tailscale](https://tailscale.com/) — a zero-config mesh VPN built on WireGuard.
+
+### Why Tailscale?
+
+When `PKB_TAILSCALE=true`, the server binds **only** to your Tailscale network interface. This means:
+
+- **Zero public attack surface** — the server is invisible to the internet
+- **No auth middleware needed** — network access IS the authentication
+- **All traffic encrypted** — WireGuard encryption between all devices
+- **No ports to open** — no firewall rules, no reverse proxy, no TLS certificates to manage
+
+This is critical for PKB because the server holds OAuth tokens and API keys that grant access to your Google Drive, Gmail, Notion, and other accounts.
+
+### Setup
+
+#### 1. Install Tailscale on your server
+
+```bash
+# Linux (Ubuntu/Debian)
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+
+# macOS
+brew install tailscale
+```
+
+Follow the auth URL printed to the terminal to add the machine to your tailnet.
+
+#### 2. Install Tailscale on your devices
+
+- **macOS**: `brew install tailscale` or download from [tailscale.com/download/mac](https://tailscale.com/download/mac)
+- **iOS**: Install "Tailscale" from the [App Store](https://apps.apple.com/app/tailscale/id1470499037), sign in with the same account
+- **Android**: Install "Tailscale" from the [Play Store](https://play.google.com/store/apps/details?id=com.tailscale.ipn), sign in with the same account
+- **Windows**: Download from [tailscale.com/download/windows](https://tailscale.com/download/windows)
+- **Linux**: `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up`
+
+#### 3. Start PKB in Tailscale mode
+
+```bash
+PKB_TAILSCALE=true pkb serve
+```
+
+Or add to your `.env`:
+
+```bash
+PKB_TAILSCALE=true
+```
+
+The server will resolve your machine's Tailscale IP and bind to it automatically. If Tailscale is not running, the server exits with a clear error.
+
+#### 4. Access from any device
+
+Find your server's Tailscale IP:
+
+```bash
+tailscale status    # lists all devices and their IPs
+```
+
+Then open in a browser on any device connected to your tailnet:
+
+```
+http://<tailscale-ip>:8080
+```
+
+#### Optional: MagicDNS for friendly hostnames
+
+In the [Tailscale admin console](https://login.tailscale.com/admin/dns), enable MagicDNS to get a human-readable hostname like:
+
+```
+http://my-server.tailnet-name.ts.net:8080
+```
+
+#### Optional: HTTPS with Tailscale certificates
+
+Enable HTTPS in the Tailscale admin console for automatic TLS certificates. Then access via:
+
+```
+https://my-server.tailnet-name.ts.net:8080
+```
+
+#### Optional: ACL lockdown
+
+Restrict which devices can reach PKB by editing [Access Controls](https://login.tailscale.com/admin/acls) in the Tailscale admin console:
+
+```json
+{
+  "acls": [
+    {"action": "accept", "src": ["autogroup:owner"], "dst": ["tag:pkb:8080"]}
+  ],
+  "tagOwners": {
+    "tag:pkb": ["autogroup:owner"]
+  }
+}
+```
+
+Then tag your server: `sudo tailscale up --advertise-tags=tag:pkb`
+
+#### Optional: Run as a systemd service
+
+To keep PKB running on boot:
+
+```bash
+# /etc/systemd/system/pkb.service
+[Unit]
+Description=Personal Knowledge Base
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=simple
+User=YOUR_USER
+EnvironmentFile=/home/YOUR_USER/.config/pkb/.env
+Environment=PKB_TAILSCALE=true
+ExecStart=/usr/local/bin/pkb serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pkb
+```
 
 ## License
 

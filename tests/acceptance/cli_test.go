@@ -720,6 +720,46 @@ func TestAcceptance_MakeBuildTarget_ProducesBinary(t *testing.T) {
 	assert.NotZero(t, info.Mode()&0111, "Binary should be executable")
 }
 
+func TestAcceptance_TailscaleMode_NoTailscale_ShowsHelpfulError(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Run with PKB_TAILSCALE=true but no Tailscale installed
+	cmd := exec.Command(binary, "serve")
+	cmd.Env = []string{
+		"HOME=" + t.TempDir(),
+		"PKB_TAILSCALE=true",
+	}
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+
+	combined := outBuf.String() + errBuf.String()
+	assert.Error(t, err, "Should fail when Tailscale is not installed")
+	assert.True(t,
+		strings.Contains(combined, "tailscale") ||
+			strings.Contains(combined, "Tailscale"),
+		"Error should mention tailscale, got: %s", combined)
+}
+
+func TestAcceptance_TailscaleMode_ExitsNonZero(t *testing.T) {
+	binary := buildBinary(t)
+
+	cmd := exec.Command(binary, "serve")
+	cmd.Env = []string{
+		"HOME=" + t.TempDir(),
+		"PKB_TAILSCALE=true",
+	}
+	err := cmd.Run()
+
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		assert.NotEqual(t, 0, exitErr.ExitCode(),
+			"Should exit with non-zero code when Tailscale unavailable")
+	} else {
+		assert.Error(t, err, "Expected non-zero exit")
+	}
+}
+
 func TestAcceptance_MakeRunTarget_ExecutesBinary(t *testing.T) {
 	// This mirrors what README tells users: "make run"
 	root := projectRoot(t)

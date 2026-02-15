@@ -20,6 +20,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/auth"
 	pkbweb "github.com/cwoolley/personal-knowledge-base/internal/web"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
+	pkbtailscale "github.com/cwoolley/personal-knowledge-base/internal/tailscale"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
@@ -57,6 +58,9 @@ var newTeaProgram = func(model tea.Model) teaRunner {
 
 // loadConfig loads application config. Overridden in tests.
 var loadConfig = config.Load
+
+// resolveTailscaleAddr resolves the Tailscale listen address. Overridden in tests.
+var resolveTailscaleAddr = pkbtailscale.ResolveAddr
 
 // newAPIClient creates a Drive API client. Overridden in tests.
 var newAPIClient = gdrive.NewAPIClient
@@ -190,6 +194,19 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Short: "Start the HTTP API server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr, _ := cmd.Flags().GetString("addr")
+
+			appCfg, err := loadConfig()
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			if appCfg.Tailscale {
+				resolved, err := resolveTailscaleAddr(addr)
+				if err != nil {
+					return fmt.Errorf("tailscale mode enabled but cannot bind: %w", err)
+				}
+				addr = resolved
+			}
+
 			srv := server.New(addr)
 			srv.Handle("GET /search", searchHandler(searchFn))
 			srv.Handle("GET /", pkbweb.Handler())

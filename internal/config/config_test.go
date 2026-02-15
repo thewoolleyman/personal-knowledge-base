@@ -127,6 +127,27 @@ func TestLoad_NotionToken_EmptyByDefault(t *testing.T) {
 	assert.Empty(t, cfg.NotionToken)
 }
 
+func TestLoad_Tailscale_TrueWhenSet(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "true")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.True(t, cfg.Tailscale)
+}
+
+func TestLoad_Tailscale_FalseByDefault(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.False(t, cfg.Tailscale)
+}
+
+func TestLoad_Tailscale_FalseWhenExplicit(t *testing.T) {
+	t.Setenv("PKB_TAILSCALE", "false")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.False(t, cfg.Tailscale)
+}
+
 func TestLoad_EnvVarsTakePrecedenceOverDotenv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
