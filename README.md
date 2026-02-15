@@ -150,6 +150,7 @@ All developer commands live in the `Makefile`. Run `make help` for the full list
 | `make run` | Build and run `pkb` with args (e.g. `make run search "agentic"`) |
 | `make serve` | Build, start the server on `:8080`, and open the web UI in a browser |
 | `make version` | Print the current version |
+| `make tailscale-health` | Check the Tailscale health endpoint (run `make build && ./pkb serve` first) |
 | `make clean` | Remove build artifacts |
 
 #### Testing
