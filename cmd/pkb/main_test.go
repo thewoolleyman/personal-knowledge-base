@@ -894,6 +894,42 @@ func TestBuildSearchFn_ObsidianSkipped_WhenFolderIDEmpty(t *testing.T) {
 	assert.Error(t, err) // API error, but obsidian path is skipped
 }
 
+func TestBuildSearchFn_NotionConnectorRegistered_WhenTokenSet(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_NOTION_TOKEN", "ntn_test_token")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	// The closure creates real clients. The search call will fail because
+	// there's no real API, but the notion connector path is exercised.
+	_, err = fn(context.Background(), "test", nil)
+	assert.Error(t, err)
+}
+
+func TestBuildSearchFn_NotionSkipped_WhenTokenEmpty(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_NOTION_TOKEN", "")
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	_, err = fn(context.Background(), "test", nil)
+	assert.Error(t, err) // API error, but notion path is skipped
+}
+
 // --- auth command tests ---
 
 func TestAuthCommand_IsRegistered(t *testing.T) {
