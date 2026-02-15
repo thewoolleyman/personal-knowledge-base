@@ -1,0 +1,14 @@
+[Unit]
+Description=Personal Knowledge Base
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/pkb/.env
+Environment=PKB_TAILSCALE=true
+ExecStart=%h/.local/bin/pkb serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

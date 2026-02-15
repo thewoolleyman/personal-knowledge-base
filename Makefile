@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve tailscale-health
+.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve tailscale-health deploy deploy-local deploy-status deploy-logs deploy-setup
 
 BINARY := pkb
 BUILD_DIR := .
@@ -235,3 +235,33 @@ verify-hooks:
 	@rm -f /tmp/pkb-verify-bundle-path
 	@echo ""
 	@echo "All checks passed."
+
+## deploy-local: Build, install to ~/.local/bin, and restart the systemd service
+deploy-local: build
+	mkdir -p $(HOME)/.local/bin
+	cp $(BINARY) $(HOME)/.local/bin/$(BINARY)
+	systemctl --user daemon-reload
+	systemctl --user restart pkb
+
+## deploy: Alias for deploy-local
+deploy: deploy-local
+
+## deploy-status: Check systemd service status and health endpoint
+deploy-status:
+	@systemctl --user status pkb --no-pager || true
+	@echo ""
+	@echo "Health check:"
+	@curl -sf http://localhost:8080/health && echo "" || echo "Server not responding"
+
+## deploy-logs: Show recent service logs
+deploy-logs:
+	@journalctl --user -u pkb --no-pager -n 50
+
+## deploy-setup: Install systemd service file and enable it (one-time setup)
+deploy-setup:
+	mkdir -p $(HOME)/.config/systemd/user
+	cp deploy/pkb.service $(HOME)/.config/systemd/user/pkb.service
+	systemctl --user daemon-reload
+	systemctl --user enable pkb
+	loginctl enable-linger $(USER)
+	@echo "Service installed and enabled. Run 'make deploy' to build and start."
