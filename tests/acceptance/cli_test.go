@@ -695,10 +695,18 @@ func TestAcceptance_ServeHealthEndpoint_Returns200(t *testing.T) {
 	// Test /health endpoint
 	resp, err := http.Get("http://" + addr + "/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode,
 		"/health endpoint should return 200 OK")
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/json")
+
+	var health map[string]string
+	require.NoError(t, json.Unmarshal(body, &health))
+	assert.Equal(t, "ok", health["status"])
+	assert.NotEmpty(t, health["version"])
+	assert.NotEmpty(t, health["uptime"])
 }
 
 func TestAcceptance_MakeBuildTarget_ProducesBinary(t *testing.T) {

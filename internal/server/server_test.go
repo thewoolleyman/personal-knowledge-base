@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
@@ -51,11 +52,19 @@ func TestServer_StartsAndStops(t *testing.T) {
 		_ = s.Serve()
 	}()
 
-	// Verify it responds
+	// Verify it responds with JSON status
 	resp, err := http.Get("http://" + addr + "/health")
 	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var health map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &health))
+	assert.Equal(t, "ok", health["status"])
+	assert.NotEmpty(t, health["uptime"])
+	assert.NotEmpty(t, health["version"])
 
 	// Shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

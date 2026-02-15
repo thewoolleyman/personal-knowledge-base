@@ -2,30 +2,48 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
+	"time"
 )
+
+// Version is set by the caller before creating a server. Defaults to "dev".
+var Version = "dev"
 
 type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
 	mux        *http.ServeMux
+	startTime  time.Time
 }
 
 func New(addr string) *Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	return &Server{
-		httpServer: &http.Server{
-			Addr:    addr,
-			Handler: mux,
-		},
-		mux: mux,
+	s := &Server{
+		startTime: time.Now(),
 	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", s.healthHandler)
+
+	s.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+	s.mux = mux
+	return s
+}
+
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	uptime := time.Since(s.startTime).Truncate(time.Second).String()
+	resp := map[string]string{
+		"status":  "ok",
+		"version": Version,
+		"uptime":  uptime,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // Handle registers an additional HTTP handler on the server's mux.

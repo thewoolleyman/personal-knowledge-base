@@ -150,6 +150,8 @@ var startEmbeddedServer = func(searchFn SearchFunc) (*apiclient.Client, func(), 
 }
 
 func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
+	server.Version = version
+
 	root := &cobra.Command{
 		Use:   "pkb",
 		Short: "Personal Knowledge Base — search across all your services",
