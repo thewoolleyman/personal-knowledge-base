@@ -94,10 +94,12 @@ All consumers (CLI, TUI, web UI) go through the same HTTP API. The `search` and 
 
 - **Google Drive** — searches files via `fullText contains` query. Requires OAuth2 credentials.
 - **Gmail** — searches email messages via Gmail API. Uses same OAuth2 token as Drive.
+- **Obsidian** — searches an Obsidian vault mirrored to Google Drive. Restricts search to a specific folder. Requires `PKB_OBSIDIAN_FOLDER_ID` and Google OAuth credentials.
+- **Notion** — searches Notion pages and databases via the Notion API. Requires `PKB_NOTION_TOKEN`.
 
 ### Future connectors (not yet implemented)
 
-Slack, Notion, Google Keep, Dropbox, S3
+Slack, Google Keep, Dropbox, S3
 
 ### Obsidian vault mirroring
 
@@ -224,6 +226,36 @@ PKB_GOOGLE_CLIENT_ID="your-client-id"
 PKB_GOOGLE_CLIENT_SECRET="your-client-secret"
 ```
 
+### Obsidian setup
+
+The Obsidian connector searches your vault via Google Drive. It requires:
+
+1. An Obsidian vault mirrored to Google Drive (see [Obsidian vault mirroring](#obsidian-vault-mirroring) above)
+2. The Google Drive folder ID of the mirror folder — get it from the URL when viewing the folder in Google Drive (the long string after `/folders/`)
+3. Set `PKB_OBSIDIAN_FOLDER_ID` in your `.env`:
+
+```bash
+PKB_OBSIDIAN_FOLDER_ID="1tK3Z1ie-CZMAlvBdNb6hNlHfFyrY-mPJ"  # your folder ID
+```
+
+The Obsidian connector uses the same Google OAuth token as Drive/Gmail, so no additional auth is needed.
+
+### Notion setup
+
+The Notion connector searches pages and databases shared with your integration:
+
+1. Go to [My Integrations](https://www.notion.so/my-integrations) and create a new **internal** integration
+2. Give it a name (e.g. "PKB") and select your workspace
+3. Under **Capabilities**, ensure **Read content** is checked (this is the only permission needed)
+4. Copy the **Internal Integration Secret** (starts with `ntn_`)
+5. Set `PKB_NOTION_TOKEN` in your `.env`:
+
+```bash
+PKB_NOTION_TOKEN="ntn_your-integration-token"
+```
+
+6. **Share pages/databases with the integration**: open each Notion page or database you want searchable, click the `···` menu → **Connections** → add your integration. Only pages explicitly shared (or child pages of shared pages) will appear in search results.
+
 ### Using the CLI
 
 ```bash
@@ -253,6 +285,8 @@ All config is via environment variables:
 | `PKB_GOOGLE_CLIENT_ID` | (none) | Google OAuth client ID |
 | `PKB_GOOGLE_CLIENT_SECRET` | (none) | Google OAuth client secret |
 | `PKB_TOKEN_PATH` | `~/.config/pkb/token.json` | Path to store OAuth token |
+| `PKB_OBSIDIAN_FOLDER_ID` | (none) | Google Drive folder ID for Obsidian vault (enables `obsidian` source) |
+| `PKB_NOTION_TOKEN` | (none) | Notion integration token (enables `notion` source) |
 
 ## License
 
