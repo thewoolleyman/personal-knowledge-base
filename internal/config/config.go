@@ -13,6 +13,7 @@ type Config struct {
 	GoogleClientSecret string
 	TokenPath          string
 	ObsidianFolderID   string
+	NotionToken        string
 }
 
 // loadDotenv loads environment variables from a .env file if present.
@@ -27,6 +28,7 @@ func Load() (*Config, error) {
 		GoogleClientSecret: os.Getenv("PKB_GOOGLE_CLIENT_SECRET"),
 		TokenPath:          envOr("PKB_TOKEN_PATH", defaultTokenPath()),
 		ObsidianFolderID:   os.Getenv("PKB_OBSIDIAN_FOLDER_ID"),
+		NotionToken:        os.Getenv("PKB_NOTION_TOKEN"),
 	}
 	return cfg, nil
 }

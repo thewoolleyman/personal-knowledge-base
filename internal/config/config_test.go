@@ -113,6 +113,20 @@ func TestLoad_ObsidianFolderID_EmptyByDefault(t *testing.T) {
 	assert.Empty(t, cfg.ObsidianFolderID)
 }
 
+func TestLoad_NotionToken(t *testing.T) {
+	t.Setenv("PKB_NOTION_TOKEN", "ntn_test_token_abc123")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ntn_test_token_abc123", cfg.NotionToken)
+}
+
+func TestLoad_NotionToken_EmptyByDefault(t *testing.T) {
+	t.Setenv("PKB_NOTION_TOKEN", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.NotionToken)
+}
+
 func TestLoad_EnvVarsTakePrecedenceOverDotenv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

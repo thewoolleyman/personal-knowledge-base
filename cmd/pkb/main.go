@@ -23,6 +23,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
+	"github.com/cwoolley/personal-knowledge-base/internal/connectors/notion"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/obsidian"
 	"github.com/cwoolley/personal-knowledge-base/internal/search"
 	"github.com/cwoolley/personal-knowledge-base/internal/server"
@@ -182,7 +183,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail,obsidian)")
+	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail,obsidian,notion)")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
@@ -352,6 +353,12 @@ func buildSearchFn() SearchFunc {
 			if err == nil {
 				allConnectors = append(allConnectors, obsidian.NewConnector(obsClient, appCfg.ObsidianFolderID))
 			}
+		}
+
+		// Create Notion connector if token is configured.
+		if appCfg.NotionToken != "" {
+			notionClient := notion.NewAPIClient(appCfg.NotionToken)
+			allConnectors = append(allConnectors, notion.NewConnector(notionClient))
 		}
 
 		engine := search.New(allConnectors...)

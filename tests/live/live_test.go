@@ -157,6 +157,53 @@ func TestLive_ServeSearch_BothSources(t *testing.T) {
 	fmt.Fprintf(os.Stderr, "\n--- Live search output ---\n%s\n", stdout)
 }
 
+func TestLive_CLISearch_NotionSource(t *testing.T) {
+	requireCredentials(t)
+	if os.Getenv("PKB_NOTION_TOKEN") == "" {
+		t.Fatalf("PKB_NOTION_TOKEN not set — add it to your .env file")
+	}
+	binary := buildBinary(t)
+
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "notion", testQuery)
+
+	require.Equal(t, 0, exitCode,
+		"search should succeed, stderr: %s", stderr)
+	require.NotEmpty(t, stdout, "Expected results in stdout")
+
+	assert.Contains(t, stdout, "PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE (Notion)",
+		"Notion source should find the test page")
+	assert.Contains(t, stdout, "[notion]",
+		"Result should show notion source tag")
+
+	// Verify only one result is returned (no fuzzy false positives)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n\n")
+	assert.Len(t, lines, 1,
+		"Expected exactly one result block; Notion search should filter non-matching pages")
+}
+
+func TestLive_CLISearch_NotionSource_OnlyExactMatch(t *testing.T) {
+	requireCredentials(t)
+	if os.Getenv("PKB_NOTION_TOKEN") == "" {
+		t.Fatalf("PKB_NOTION_TOKEN not set — add it to your .env file")
+	}
+	binary := buildBinary(t)
+
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "notion", testQuery)
+
+	require.Equal(t, 0, exitCode, "stderr: %s", stderr)
+
+	// Count numbered results (lines starting with "N.")
+	resultCount := 0
+	for _, line := range strings.Split(stdout, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > 0 && trimmed[0] >= '1' && trimmed[0] <= '9' && strings.Contains(trimmed, ".") {
+			resultCount++
+		}
+	}
+	assert.Equal(t, 1, resultCount,
+		"Should return exactly 1 Notion result, got stdout:\n%s", stdout)
+}
+
 func TestLive_CLISearch_ObsidianSource(t *testing.T) {
 	requireCredentials(t)
 	if os.Getenv("PKB_OBSIDIAN_FOLDER_ID") == "" {
