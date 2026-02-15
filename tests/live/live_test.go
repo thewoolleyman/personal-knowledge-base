@@ -49,7 +49,7 @@ func buildBinary(t *testing.T) string {
 func runPKB(t *testing.T, binary string, args ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "PKB_TAILSCALE=false")
 
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
