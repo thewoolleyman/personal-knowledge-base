@@ -239,9 +239,10 @@ verify-hooks:
 ## deploy-local: Build, install to ~/.local/bin, and restart the systemd service
 deploy-local: build
 	mkdir -p $(HOME)/.local/bin
+	systemctl --user stop pkb || true
 	cp $(BINARY) $(HOME)/.local/bin/$(BINARY)
 	systemctl --user daemon-reload
-	systemctl --user restart pkb
+	systemctl --user start pkb
 
 ## deploy: Alias for deploy-local
 deploy: deploy-local

@@ -73,6 +73,22 @@ func TestHandler_GmailDefaultOff(t *testing.T) {
 	assert.NotContains(t, html, `value="notion" checked`)
 }
 
+func TestHandler_HasGitHubLink(t *testing.T) {
+	h := Handler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+
+	assert.Contains(t, html, `href="https://github.com/thewoolleyman/personal-knowledge-base"`, "should link to GitHub repo")
+	assert.Contains(t, html, `>GitHub</a>`, "link text should be 'GitHub'")
+}
+
 func TestHandler_HasCSS(t *testing.T) {
 	h := Handler()
 	srv := httptest.NewServer(h)
