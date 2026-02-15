@@ -116,7 +116,7 @@ jobs:
     name: Live API Tests
     runs-on: ubuntu-latest
     needs: [unit-tests, acceptance-tests]
-    # Requires secrets: PKB_TOKEN_JSON, PKB_GOOGLE_CLIENT_ID, PKB_GOOGLE_CLIENT_SECRET, PKB_OBSIDIAN_FOLDER_ID
+    # Requires secrets: PKB_TOKEN_JSON, PKB_GOOGLE_CLIENT_ID, PKB_GOOGLE_CLIENT_SECRET, PKB_OBSIDIAN_FOLDER_ID, PKB_NOTION_TOKEN
     # Tests MUST NEVER be skipped — missing secrets is a hard failure.
     steps:
       - name: Verify required secrets
@@ -125,12 +125,14 @@ jobs:
           PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
           PKB_TOKEN_JSON: ${{ secrets.PKB_TOKEN_JSON }}
           PKB_OBSIDIAN_FOLDER_ID: ${{ secrets.PKB_OBSIDIAN_FOLDER_ID }}
+          PKB_NOTION_TOKEN: ${{ secrets.PKB_NOTION_TOKEN }}
         run: |
           missing=""
           [ -z "$PKB_GOOGLE_CLIENT_ID" ] && missing="$missing PKB_GOOGLE_CLIENT_ID"
           [ -z "$PKB_GOOGLE_CLIENT_SECRET" ] && missing="$missing PKB_GOOGLE_CLIENT_SECRET"
           [ -z "$PKB_TOKEN_JSON" ] && missing="$missing PKB_TOKEN_JSON"
           [ -z "$PKB_OBSIDIAN_FOLDER_ID" ] && missing="$missing PKB_OBSIDIAN_FOLDER_ID"
+          [ -z "$PKB_NOTION_TOKEN" ] && missing="$missing PKB_NOTION_TOKEN"
           if [ -n "$missing" ]; then
             echo "FAIL: Missing required secrets:$missing" >&2
             echo "Add these secrets to the repository settings." >&2
@@ -158,6 +160,7 @@ jobs:
           PKB_GOOGLE_CLIENT_ID: ${{ secrets.PKB_GOOGLE_CLIENT_ID }}
           PKB_GOOGLE_CLIENT_SECRET: ${{ secrets.PKB_GOOGLE_CLIENT_SECRET }}
           PKB_OBSIDIAN_FOLDER_ID: ${{ secrets.PKB_OBSIDIAN_FOLDER_ID }}
+          PKB_NOTION_TOKEN: ${{ secrets.PKB_NOTION_TOKEN }}
         run: make test-live
 
   e2e-tests:
