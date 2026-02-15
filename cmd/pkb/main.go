@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 
@@ -59,8 +60,8 @@ var newTeaProgram = func(model tea.Model) teaRunner {
 // loadConfig loads application config. Overridden in tests.
 var loadConfig = config.Load
 
-// resolveTailscaleAddr resolves the Tailscale listen address. Overridden in tests.
-var resolveTailscaleAddr = pkbtailscale.ResolveAddr
+// resolveTailscaleIP resolves the machine's Tailscale IP. Overridden in tests.
+var resolveTailscaleIP = pkbtailscale.ResolveIP
 
 // newAPIClient creates a Drive API client. Overridden in tests.
 var newAPIClient = gdrive.NewAPIClient
@@ -199,12 +200,14 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+
+			var tailscaleIP string
 			if appCfg.Tailscale {
-				resolved, err := resolveTailscaleAddr(addr)
+				tsIP, err := resolveTailscaleIP()
 				if err != nil {
-					return fmt.Errorf("tailscale mode enabled but cannot bind: %w", err)
+					return fmt.Errorf("tailscale mode enabled but cannot resolve IP: %w", err)
 				}
-				addr = resolved
+				tailscaleIP = tsIP
 			}
 
 			srv := server.New(addr)
@@ -215,6 +218,10 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(out, "Listening on %s\n", srv.Addr())
+			if tailscaleIP != "" {
+				_, port, _ := net.SplitHostPort(srv.Addr())
+				fmt.Fprintf(out, "Tailscale: http://%s:%s\n", tailscaleIP, port)
+			}
 			return serveLoop(srv, out)
 		},
 	}

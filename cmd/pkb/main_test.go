@@ -270,14 +270,14 @@ func TestServeCommand_IsRegistered(t *testing.T) {
 	assert.Equal(t, ":8080", f.DefValue)
 }
 
-func TestServeCommand_TailscaleMode_ResolvesAddr(t *testing.T) {
+func TestServeCommand_TailscaleMode_PrintsTailscaleURL(t *testing.T) {
 	t.Setenv("PKB_TAILSCALE", "true")
 
-	origResolve := resolveTailscaleAddr
-	resolveTailscaleAddr = func(addr string) (string, error) {
-		return "127.0.0.1:0", nil
+	origResolve := resolveTailscaleIP
+	resolveTailscaleIP = func() (string, error) {
+		return "100.64.0.1", nil
 	}
-	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+	t.Cleanup(func() { resolveTailscaleIP = origResolve })
 
 	testCh := make(chan os.Signal, 1)
 	origMakeSignalCh := makeSignalCh
@@ -289,12 +289,13 @@ func TestServeCommand_TailscaleMode_ResolvesAddr(t *testing.T) {
 	buf := &syncBuffer{}
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runWithOutput([]string{"serve"}, noopSearch, buf)
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, noopSearch, buf)
 	}()
 
-	addr := waitForServe(t, buf, errCh)
-	// Verify resolveTailscaleAddr was used (bound to 127.0.0.1, not [::])
-	assert.Contains(t, addr, "127.0.0.1")
+	_ = waitForServe(t, buf, errCh)
+	// Should print the Tailscale-accessible URL
+	assert.Contains(t, buf.String(), "Tailscale")
+	assert.Contains(t, buf.String(), "100.64.0.1")
 
 	testCh <- syscall.SIGINT
 	select {
@@ -320,11 +321,11 @@ func TestServeCommand_ConfigLoadError(t *testing.T) {
 func TestServeCommand_TailscaleMode_ErrorShowsHelpfulMessage(t *testing.T) {
 	t.Setenv("PKB_TAILSCALE", "true")
 
-	origResolve := resolveTailscaleAddr
-	resolveTailscaleAddr = func(addr string) (string, error) {
+	origResolve := resolveTailscaleIP
+	resolveTailscaleIP = func() (string, error) {
 		return "", fmt.Errorf("failed to get tailscale IP (is tailscale running?): exit status 1")
 	}
-	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+	t.Cleanup(func() { resolveTailscaleIP = origResolve })
 
 	var buf bytes.Buffer
 	err := runWithOutput([]string{"serve"}, noopSearch, &buf)
@@ -335,14 +336,14 @@ func TestServeCommand_TailscaleMode_ErrorShowsHelpfulMessage(t *testing.T) {
 func TestServeCommand_NoTailscale_DefaultBehavior(t *testing.T) {
 	t.Setenv("PKB_TAILSCALE", "")
 
-	// Verify resolveTailscaleAddr is NOT called when Tailscale is disabled
-	origResolve := resolveTailscaleAddr
+	// Verify resolveTailscaleIP is NOT called when Tailscale is disabled
+	origResolve := resolveTailscaleIP
 	called := false
-	resolveTailscaleAddr = func(addr string) (string, error) {
+	resolveTailscaleIP = func() (string, error) {
 		called = true
-		return addr, nil
+		return "100.64.0.1", nil
 	}
-	t.Cleanup(func() { resolveTailscaleAddr = origResolve })
+	t.Cleanup(func() { resolveTailscaleIP = origResolve })
 
 	testCh := make(chan os.Signal, 1)
 	origMakeSignalCh := makeSignalCh
@@ -358,7 +359,7 @@ func TestServeCommand_NoTailscale_DefaultBehavior(t *testing.T) {
 	}()
 
 	_ = waitForServe(t, buf, errCh)
-	assert.False(t, called, "resolveTailscaleAddr should not be called when PKB_TAILSCALE is not set")
+	assert.False(t, called, "resolveTailscaleIP should not be called when PKB_TAILSCALE is not set")
 
 	testCh <- syscall.SIGINT
 	select {
