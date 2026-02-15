@@ -42,6 +42,8 @@ func TestHandler_HTMLContainsSearchForm(t *testing.T) {
 	assert.Contains(t, html, "<input", "should have a search input")
 	assert.Contains(t, html, "google-drive", "should have google-drive source option")
 	assert.Contains(t, html, "gmail", "should have gmail source option")
+	assert.Contains(t, html, "obsidian", "should have obsidian source option")
+	assert.Contains(t, html, "notion", "should have notion source option")
 }
 
 func TestHandler_GmailDefaultOff(t *testing.T) {
@@ -62,6 +64,13 @@ func TestHandler_GmailDefaultOff(t *testing.T) {
 
 	// Drive checkbox SHOULD be checked by default
 	assert.Contains(t, html, `value="google-drive" checked`)
+
+	// Obsidian checkbox SHOULD be checked by default
+	assert.Contains(t, html, `value="obsidian" checked`)
+
+	// Notion checkbox should NOT have the checked attribute
+	assert.Contains(t, html, `value="notion"`)
+	assert.NotContains(t, html, `value="notion" checked`)
 }
 
 func TestHandler_HasCSS(t *testing.T) {

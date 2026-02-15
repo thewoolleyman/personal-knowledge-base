@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testQuery = "PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE"
+
 // TestMain loads the .env file from the project root before running tests.
 func TestMain(m *testing.M) {
 	// Walk up from tests/acceptance/ to find project root
@@ -171,12 +173,13 @@ func TestAcceptance_SearchWithQuery_GivesActionableOutput(t *testing.T) {
 	assert.NotContains(t, combined, "pkb setup",
 		"Error must not reference nonexistent 'pkb setup' command")
 
-	// Must give the user actionable information about what to do
+	// Must give the user actionable information about what to do, or show results
 	assert.True(t,
 		strings.Contains(combined, "PKB_GOOGLE_CLIENT_ID") ||
 			strings.Contains(combined, "credentials") ||
 			strings.Contains(combined, "OAuth") ||
-			strings.Contains(combined, "No results"),
+			strings.Contains(combined, "No results") ||
+			strings.Contains(combined, "1."), // numbered results when credentials are present
 		"Output should tell the user what to configure or show results, got: %s", combined)
 }
 
@@ -385,6 +388,8 @@ func TestAcceptance_ServeWebUI_ReturnsHTML(t *testing.T) {
 	assert.Contains(t, html, "Search", "should contain search UI")
 	assert.Contains(t, html, "google-drive", "should have google-drive checkbox")
 	assert.Contains(t, html, "gmail", "should have gmail checkbox")
+	assert.Contains(t, html, "obsidian", "should have obsidian checkbox")
+	assert.Contains(t, html, "notion", "should have notion checkbox")
 }
 
 // --- Additional acceptance tests for comprehensive coverage ---
@@ -407,30 +412,29 @@ func TestAcceptance_SearchSourcesHelpText_UsesCanonicalNames(t *testing.T) {
 func TestAcceptance_SearchWithSourcesFlag_FiltersResults(t *testing.T) {
 	binary := buildBinary(t)
 
-	// Test --sources flag is recognized (even without credentials)
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "google-drive", testQuery)
 
-	// Should not error on the flag itself - flag is valid
-	// Error will be about credentials, not unknown flag
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources flag")
-	assert.NotContains(t, combined, "Error: unknown command",
-		"Should recognize search command with --sources")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[google-drive]",
+		"Should return google-drive results")
+	assert.NotContains(t, stdout, "[gmail]",
+		"Should not return gmail results when filtering to google-drive")
+	assert.NotContains(t, stdout, "[obsidian]",
+		"Should not return obsidian results when filtering to google-drive")
+	assert.NotContains(t, stdout, "[notion]",
+		"Should not return notion results when filtering to google-drive")
 }
 
 func TestAcceptance_SearchWithMultipleSources_AcceptsCommaList(t *testing.T) {
 	binary := buildBinary(t)
 
-	// Test multiple sources with comma-separated list
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive,gmail", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "google-drive,gmail", testQuery)
 
-	// Should not error on the flag format
-	assert.NotContains(t, combined, "invalid argument",
-		"Should accept comma-separated source list")
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources flag with multiple values")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[google-drive]",
+		"Should return google-drive results")
+	assert.Contains(t, stdout, "[gmail]",
+		"Should return gmail results")
 }
 
 func TestAcceptance_SearchHelpText_ShowsObsidianSource(t *testing.T) {
@@ -443,28 +447,34 @@ func TestAcceptance_SearchHelpText_ShowsObsidianSource(t *testing.T) {
 		"Help text should list 'obsidian' as a valid source")
 }
 
-func TestAcceptance_SearchWithObsidianSource_AcceptsFlag(t *testing.T) {
+func TestAcceptance_SearchWithObsidianSource_ReturnsResults(t *testing.T) {
 	binary := buildBinary(t)
 
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "obsidian", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "obsidian", testQuery)
 
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources obsidian flag")
-	assert.NotContains(t, combined, "Error: unknown command",
-		"Should recognize search command with --sources obsidian")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[obsidian]",
+		"Should return obsidian results")
+	assert.NotContains(t, stdout, "[google-drive]",
+		"Should not return google-drive results when filtering to obsidian")
+	assert.NotContains(t, stdout, "[gmail]",
+		"Should not return gmail results when filtering to obsidian")
+	assert.NotContains(t, stdout, "[notion]",
+		"Should not return notion results when filtering to obsidian")
 }
 
-func TestAcceptance_SearchWithAllThreeSources_AcceptsCommaList(t *testing.T) {
+func TestAcceptance_SearchWithThreeSources_ReturnsResults(t *testing.T) {
 	binary := buildBinary(t)
 
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive,gmail,obsidian", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "google-drive,gmail,obsidian", testQuery)
 
-	assert.NotContains(t, combined, "invalid argument",
-		"Should accept comma-separated source list with all three sources")
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources flag with three values")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[google-drive]",
+		"Should return google-drive results")
+	assert.Contains(t, stdout, "[gmail]",
+		"Should return gmail results")
+	assert.Contains(t, stdout, "[obsidian]",
+		"Should return obsidian results")
 }
 
 func TestAcceptance_SearchHelpText_ShowsNotionSource(t *testing.T) {
@@ -477,28 +487,36 @@ func TestAcceptance_SearchHelpText_ShowsNotionSource(t *testing.T) {
 		"Help text should list 'notion' as a valid source")
 }
 
-func TestAcceptance_SearchWithNotionSource_AcceptsFlag(t *testing.T) {
+func TestAcceptance_SearchWithNotionSource_ReturnsResults(t *testing.T) {
 	binary := buildBinary(t)
 
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "notion", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "notion", testQuery)
 
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources notion flag")
-	assert.NotContains(t, combined, "Error: unknown command",
-		"Should recognize search command with --sources notion")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[notion]",
+		"Should return notion results")
+	assert.NotContains(t, stdout, "[google-drive]",
+		"Should not return google-drive results when filtering to notion")
+	assert.NotContains(t, stdout, "[gmail]",
+		"Should not return gmail results when filtering to notion")
+	assert.NotContains(t, stdout, "[obsidian]",
+		"Should not return obsidian results when filtering to notion")
 }
 
-func TestAcceptance_SearchWithAllFourSources_AcceptsCommaList(t *testing.T) {
+func TestAcceptance_SearchWithAllFourSources_ReturnsResults(t *testing.T) {
 	binary := buildBinary(t)
 
-	stdout, stderr, _ := runPKB(t, binary, "search", "--sources", "google-drive,gmail,obsidian,notion", "test")
-	combined := stdout + stderr
+	stdout, stderr, exitCode := runPKB(t, binary, "search", "--sources", "google-drive,gmail,obsidian,notion", testQuery)
 
-	assert.NotContains(t, combined, "invalid argument",
-		"Should accept comma-separated source list with all four sources")
-	assert.NotContains(t, combined, "unknown flag",
-		"Should recognize --sources flag with four values")
+	require.Equal(t, 0, exitCode, "search should succeed, stderr: %s", stderr)
+	assert.Contains(t, stdout, "[google-drive]",
+		"Should return google-drive results")
+	assert.Contains(t, stdout, "[gmail]",
+		"Should return gmail results")
+	assert.Contains(t, stdout, "[obsidian]",
+		"Should return obsidian results")
+	assert.Contains(t, stdout, "[notion]",
+		"Should return notion results")
 }
 
 func TestAcceptance_VersionWithoutBuild_ShowsDevVersion(t *testing.T) {

@@ -114,9 +114,9 @@ func TestReleaseZipContainsSingleBinary(t *testing.T) {
 	// Build only for current platform to keep test fast
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
+	t.Setenv("TARGETS", goos+"/"+goarch)
 	cmd := exec.Command(buildScript, testVersion)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "TARGETS="+goos+"/"+goarch)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "build-release.sh failed:\n%s", out)
 
@@ -169,9 +169,9 @@ func TestReleaseZipMacOSCodesigned(t *testing.T) {
 
 	testVersion := "0.0.0-signtest"
 
+	t.Setenv("TARGETS", "darwin/"+runtime.GOARCH)
 	cmd := exec.Command(buildScript, testVersion)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "TARGETS=darwin/"+runtime.GOARCH)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "build-release.sh failed:\n%s", out)
 
@@ -219,9 +219,9 @@ func TestReleaseInstallFlow(t *testing.T) {
 
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
+	t.Setenv("TARGETS", goos+"/"+goarch)
 	cmd := exec.Command(buildScript, testVersion)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "TARGETS="+goos+"/"+goarch)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "build-release.sh failed:\n%s", out)
 
