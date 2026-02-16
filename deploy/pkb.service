@@ -9,7 +9,7 @@ Environment=PKB_TAILSCALE=true
 Environment=PKB_SERVER_ADDR=:9000
 ExecStart=%h/.local/bin/pkb serve
 Restart=on-failure
-RestartSec=5
+RestartSec=3
 
 [Install]
 WantedBy=default.target
