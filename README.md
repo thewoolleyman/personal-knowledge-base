@@ -446,25 +446,30 @@ Set these at https://github.com/thewoolleyman/personal-knowledge-base/settings/s
 
 ### Tailscale ACL requirements
 
-The `tag:ci` node needs SSH access to the deploy target. Add to your [ACLs](https://login.tailscale.com/admin/acls):
+The `tag:ci` node needs SSH access to the deploy target. Edit your ACL policy file at https://login.tailscale.com/admin/acls/file and add these sections:
 
-```json
-{
-  "tagOwners": {
-    "tag:ci": ["autogroup:admin"]
-  },
-  "ssh": [
+```jsonc
+"tagOwners": {
+    "tag:ci":  ["autogroup:admin"],
+    "tag:vps": ["autogroup:admin"],
+},
+"ssh": [
     {
-      "action": "accept",
-      "src": ["tag:ci"],
-      "dst": ["autogroup:self"],
-      "users": ["ubuntu"]
-    }
-  ]
-}
+        "action": "accept",
+        "src":    ["tag:ci"],
+        "dst":    ["tag:vps"],
+        "users":  ["ubuntu"],
+    },
+],
 ```
 
-The deploy target must have Tailscale SSH enabled: `sudo tailscale up --ssh`
+Then tag your production server as `tag:vps`:
+
+```bash
+sudo tailscale up --ssh --advertise-tags=tag:vps
+```
+
+The `--ssh` flag enables Tailscale SSH on the server, and `tag:vps` makes it a target for the CI SSH rule.
 
 ## License
 
