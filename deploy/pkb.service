@@ -1,5 +1,5 @@
 [Unit]
-Description=Personal Knowledge Base
+Description=Personal Knowledge Base (PKB)
 After=network.target
 
 [Service]
