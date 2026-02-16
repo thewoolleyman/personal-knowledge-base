@@ -493,9 +493,7 @@ jobs:
           DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
         run: |
           sleep 3
-          ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" bash -lc '
-            curl -sf http://localhost:9000/health || { echo "Health check failed"; exit 1; }
-          '
+          ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" "curl -sf http://localhost:9000/health || exit 1"
           echo "Deployment health check passed"
 
   # =============================================================================
