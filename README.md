@@ -148,9 +148,9 @@ All developer commands live in the `Makefile`. Run `make help` for the full list
 |--------|-------------|
 | `make build` | Compile the `pkb` binary |
 | `make run` | Build and run `pkb` with args (e.g. `make run search "agentic"`) |
-| `make serve` | Build, start the server on `:8080`, and open the web UI in a browser |
+| `make serve` | Build, start the dev server on `:8080`, and open the web UI in a browser |
 | `make version` | Print the current version |
-| `make tailscale-health` | Check the Tailscale health endpoint (run `make build && ./pkb serve` first) |
+| `make tailscale-health` | Check the Tailscale production health endpoint (port 9000) |
 | `make clean` | Remove build artifacts |
 
 #### Testing
@@ -205,6 +205,14 @@ If you see results from each configured connector, the integration is healthy.
 | `make scan-secrets-staged` | Run gitleaks on staged files only (same check as pre-commit hook) |
 | `make setup-hooks` | Install the pre-commit hook (gitleaks + beads export) |
 | `make verify-hooks` | Verify two-tier logging, context bundles, and recall work end-to-end |
+
+#### Deployment
+
+| Target | Description |
+|--------|-------------|
+| `make deploy-local` | Build, install binary, and restart the systemd service |
+| `make deploy-status` | Check systemd service status and health endpoint (port 9000) |
+| `make deploy-logs` | Show recent service logs |
 
 #### CI
 
@@ -282,7 +290,7 @@ All config is via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PKB_SERVER_ADDR` | `:8080` | HTTP server listen address |
+| `PKB_SERVER_ADDR` | `:8080` | HTTP server listen address (production uses `:9000` via systemd) |
 | `PKB_GOOGLE_CLIENT_ID` | (none) | Google OAuth client ID |
 | `PKB_GOOGLE_CLIENT_SECRET` | (none) | Google OAuth client secret |
 | `PKB_TOKEN_PATH` | `~/.config/pkb/token.json` | Path to store OAuth token |
@@ -353,15 +361,17 @@ tailscale status    # lists all devices and their IPs
 Then open in a browser on any device connected to your tailnet:
 
 ```
-http://<tailscale-ip>:8080
+http://<tailscale-ip>:9000
 ```
+
+(Dev server uses port 8080; production uses 9000.)
 
 #### Optional: MagicDNS for friendly hostnames
 
 In the [Tailscale admin console](https://login.tailscale.com/admin/dns), enable MagicDNS to get a human-readable hostname like:
 
 ```
-http://my-server.tailnet-name.ts.net:8080
+http://my-server.tailnet-name.ts.net:9000
 ```
 
 #### Optional: HTTPS with Tailscale certificates
@@ -369,7 +379,7 @@ http://my-server.tailnet-name.ts.net:8080
 Enable HTTPS in the Tailscale admin console for automatic TLS certificates. Then access via:
 
 ```
-https://my-server.tailnet-name.ts.net:8080
+https://my-server.tailnet-name.ts.net:9000
 ```
 
 #### Optional: ACL lockdown
@@ -379,7 +389,7 @@ Restrict which devices can reach PKB by editing [Access Controls](https://login.
 ```json
 {
   "acls": [
-    {"action": "accept", "src": ["autogroup:owner"], "dst": ["tag:pkb:8080"]}
+    {"action": "accept", "src": ["autogroup:owner"], "dst": ["tag:pkb:9000"]}
   ],
   "tagOwners": {
     "tag:pkb": ["autogroup:owner"]
@@ -389,34 +399,72 @@ Restrict which devices can reach PKB by editing [Access Controls](https://login.
 
 Then tag your server: `sudo tailscale up --advertise-tags=tag:pkb`
 
-#### Optional: Run as a systemd service
+#### Run as a systemd user service (production)
 
-To keep PKB running on boot:
+The production service file is at `deploy/pkb.service`. It sets `PKB_SERVER_ADDR=:9000` so the production server does not conflict with a dev server on the default port 8080.
 
-```bash
-# /etc/systemd/system/pkb.service
-[Unit]
-Description=Personal Knowledge Base
-After=network.target tailscaled.service
-Wants=tailscaled.service
-
-[Service]
-Type=simple
-User=YOUR_USER
-EnvironmentFile=/home/YOUR_USER/.config/pkb/.env
-Environment=PKB_TAILSCALE=true
-ExecStart=/usr/local/bin/pkb serve
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
+Deploy it with:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now pkb
+make deploy-local
 ```
+
+This copies the binary to `~/.local/bin/pkb`, installs the systemd user service, and starts it. The service auto-restarts on failure.
+
+To check status: `make deploy-status`
+To view logs: `make deploy-logs`
+
+## CI/CD Deployment
+
+The CI pipeline (`.github/workflows/ci-cd.yml`) automatically deploys to production on every push to `main` after tests pass and a release is created.
+
+### How it works
+
+1. CI runs all tests (unit, acceptance, live, e2e)
+2. Builds release artifacts for Linux, macOS, Windows
+3. Creates a GitHub Release
+4. SSHes to the production server via Tailscale and runs `make deploy-local`
+5. Verifies the health endpoint responds on port 9000
+
+### Required GitHub secrets
+
+Set these at https://github.com/thewoolleyman/personal-knowledge-base/settings/secrets/actions:
+
+| Secret | Description |
+|--------|-------------|
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID (created at https://login.tailscale.com/admin/settings/oauth) |
+| `TS_OAUTH_SECRET` | Tailscale OAuth client secret |
+| `DEPLOY_TARGET` | SSH target for deployment (e.g. `ubuntu@100.89.189.118`) |
+
+### Tailscale OAuth setup for CI
+
+1. Go to https://login.tailscale.com/admin/settings/oauth
+2. Click **Generate OAuth Client**
+3. Set scope: **`auth_keys` — Write**
+4. Set tag: **`tag:ci`**
+5. Click **Generate credential** and save the Client ID and Secret as GitHub secrets
+
+### Tailscale ACL requirements
+
+The `tag:ci` node needs SSH access to the deploy target. Add to your [ACLs](https://login.tailscale.com/admin/acls):
+
+```json
+{
+  "tagOwners": {
+    "tag:ci": ["autogroup:admin"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["tag:ci"],
+      "dst": ["autogroup:self"],
+      "users": ["ubuntu"]
+    }
+  ]
+}
+```
+
+The deploy target must have Tailscale SSH enabled: `sudo tailscale up --ssh`
 
 ## License
 
