@@ -236,12 +236,15 @@ verify-hooks:
 	@echo ""
 	@echo "All checks passed."
 
-## deploy-local: Build, install to ~/.local/bin, and restart the systemd service
+## deploy-local: Build, install to ~/.local/bin, install service file, and restart
 deploy-local: build
 	mkdir -p $(HOME)/.local/bin
+	mkdir -p $(HOME)/.config/systemd/user
 	systemctl --user stop pkb || true
 	cp $(BINARY) $(HOME)/.local/bin/$(BINARY)
+	cp deploy/pkb.service $(HOME)/.config/systemd/user/pkb.service
 	systemctl --user daemon-reload
+	systemctl --user enable pkb
 	systemctl --user start pkb
 
 ## deploy: Alias for deploy-local
