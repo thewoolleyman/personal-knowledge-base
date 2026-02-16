@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 EnvironmentFile=%h/.config/pkb/.env
 Environment=PKB_TAILSCALE=true
+Environment=PKB_SERVER_ADDR=:9000
 ExecStart=%h/.local/bin/pkb serve
 Restart=on-failure
 RestartSec=5

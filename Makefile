@@ -100,8 +100,8 @@ serve: build
 ## tailscale-health: Check the Tailscale health endpoint (run `make build && ./pkb serve` first)
 tailscale-health:
 	@IP=$$(tailscale ip -4 2>/dev/null) || { echo "Error: tailscale not running"; exit 1; }; \
-	echo "Checking http://$$IP:8080/health ..."; \
-	curl -sf "http://$$IP:8080/health" && echo "" || { echo "Error: server not responding. Run: make build && PKB_TAILSCALE=true ./pkb serve"; exit 1; }
+	echo "Checking http://$$IP:9000/health ..."; \
+	curl -sf "http://$$IP:9000/health" && echo "" || { echo "Error: server not responding. Run: make build && PKB_TAILSCALE=true ./pkb serve"; exit 1; }
 
 ## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser
 open-cicd-webpage:
@@ -252,7 +252,7 @@ deploy-status:
 	@systemctl --user status pkb --no-pager || true
 	@echo ""
 	@echo "Health check:"
-	@curl -sf http://localhost:8080/health && echo "" || echo "Server not responding"
+	@curl -sf http://localhost:9000/health && echo "" || echo "Server not responding"
 
 ## deploy-logs: Show recent service logs
 deploy-logs:

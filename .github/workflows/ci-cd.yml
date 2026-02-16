@@ -494,7 +494,7 @@ jobs:
         run: |
           sleep 3
           ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" bash -lc '
-            curl -sf http://localhost:8080/health || { echo "Health check failed"; exit 1; }
+            curl -sf http://localhost:9000/health || { echo "Health check failed"; exit 1; }
           '
           echo "Deployment health check passed"
 
