@@ -196,11 +196,14 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		Use:   "serve",
 		Short: "Start the HTTP API server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			addr, _ := cmd.Flags().GetString("addr")
-
 			appCfg, err := loadConfig()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
+			}
+
+			addr, _ := cmd.Flags().GetString("addr")
+			if !cmd.Flags().Changed("addr") {
+				addr = appCfg.ServerAddr
 			}
 
 			var tailscaleIP string

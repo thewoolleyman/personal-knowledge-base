@@ -305,6 +305,34 @@ func TestServeCommand_TailscaleMode_PrintsTailscaleURL(t *testing.T) {
 	}
 }
 
+func TestServeCommand_UsesServerAddrFromConfig(t *testing.T) {
+	t.Setenv("PKB_SERVER_ADDR", ":9000")
+
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		// No --addr flag: should use PKB_SERVER_ADDR from config
+		errCh <- runWithOutput([]string{"serve"}, noopSearch, buf)
+	}()
+
+	_ = waitForServe(t, buf, errCh)
+	assert.Contains(t, buf.String(), "Listening on [::]:9000")
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
 func TestServeCommand_ConfigLoadError(t *testing.T) {
 	orig := loadConfig
 	loadConfig = func() (*config.Config, error) {
