@@ -103,7 +103,17 @@
     <label><input type="checkbox" name="source" value="gmail"> Gmail</label>
     <label><input type="checkbox" name="source" value="obsidian" checked> Obsidian</label>
     <label><input type="checkbox" name="source" value="notion"> Notion</label>
+    <label><input type="checkbox" name="source" value="claude"> Claude</label>
   </div>
+
+  <details style="margin-bottom:1.5rem;font-size:0.9rem;color:#555">
+    <summary style="cursor:pointer">Import Claude conversations</summary>
+    <div style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center">
+      <input type="file" id="claudeFile" accept=".json">
+      <button type="button" id="uploadBtn" style="padding:0.4rem 1rem;font-size:0.85rem;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer">Upload</button>
+      <span id="uploadStatus" style="font-size:0.85rem"></span>
+    </div>
+  </details>
 
   <div id="status"></div>
   <div id="error"></div>
@@ -165,6 +175,34 @@
       div.textContent = str;
       return div.innerHTML;
     }
+
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      const fileInput = document.getElementById('claudeFile');
+      const uploadStatus = document.getElementById('uploadStatus');
+      if (!fileInput.files.length) {
+        uploadStatus.textContent = 'Please select a file.';
+        uploadStatus.style.color = '#dc2626';
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      uploadStatus.textContent = 'Uploading...';
+      uploadStatus.style.color = '#666';
+      try {
+        const resp = await fetch('/import-claude', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (resp.ok) {
+          uploadStatus.textContent = 'Imported successfully.';
+          uploadStatus.style.color = '#16a34a';
+        } else {
+          uploadStatus.textContent = data.error || 'Upload failed.';
+          uploadStatus.style.color = '#dc2626';
+        }
+      } catch (err) {
+        uploadStatus.textContent = 'Network error: ' + err.message;
+        uploadStatus.style.color = '#dc2626';
+      }
+    });
   </script>
 </body>
 </html>

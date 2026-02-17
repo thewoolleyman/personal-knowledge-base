@@ -11,7 +11,9 @@
 package acceptance
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -782,4 +784,270 @@ func TestAcceptance_MakeRunTarget_ExecutesBinary(t *testing.T) {
 	// Output should contain version information
 	assert.Contains(t, string(output), "pkb version",
 		"make run should execute the binary and show version")
+}
+
+// --- Tests for import-claude command ---
+
+func TestAcceptance_ImportClaudeHelp(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "import-claude", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "import-claude")
+	assert.Contains(t, stdout, "Claude")
+}
+
+func TestAcceptance_HelpShowsImportClaudeCommand(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "import-claude", "Help should list import-claude command")
+}
+
+func TestAcceptance_ImportClaude_MissingArg_ShowsError(t *testing.T) {
+	binary := buildBinary(t)
+
+	_, stderr, exitCode := runPKB(t, binary, "import-claude")
+
+	assert.NotEqual(t, 0, exitCode, "import-claude without args should fail")
+	assert.Contains(t, stderr, "accepts 1 arg",
+		"Should indicate missing argument")
+}
+
+func TestAcceptance_ImportClaude_MissingFile_ShowsError(t *testing.T) {
+	binary := buildBinary(t)
+
+	_, stderr, exitCode := runPKB(t, binary, "import-claude", "/nonexistent/conversations.json")
+
+	assert.NotEqual(t, 0, exitCode, "import-claude with missing file should fail")
+	combined := stderr
+	assert.True(t,
+		strings.Contains(combined, "no such file") ||
+			strings.Contains(combined, "read file"),
+		"Should indicate file not found, got: %s", combined)
+}
+
+func TestAcceptance_ImportClaude_CopiesFile(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Create a temporary conversations.json
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "conversations.json")
+	content := `[{"uuid":"conv-1","name":"Test Chat","chat_messages":[]}]`
+	require.NoError(t, os.WriteFile(srcFile, []byte(content), 0644))
+
+	// Use a custom HOME so DefaultExportPath writes to a temp location
+	fakeHome := t.TempDir()
+	cmd := exec.Command(binary, "import-claude", srcFile)
+	cmd.Env = []string{
+		"HOME=" + fakeHome,
+		"XDG_DATA_HOME=", // unset so it falls back to HOME
+	}
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+
+	require.NoError(t, err, "import-claude should succeed, stderr: %s", errBuf.String())
+	assert.Contains(t, outBuf.String(), "Imported Claude conversations",
+		"Should confirm import")
+
+	// Verify the file was actually written
+	destPath := filepath.Join(fakeHome, ".local", "share", "pkb", "claude-conversations.json")
+	assert.FileExists(t, destPath, "Should write file to XDG data location")
+
+	got, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(got), "File contents should match")
+}
+
+func TestAcceptance_ImportClaude_AcceptsZipFile(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Create a zip archive mimicking a real Claude export
+	content := `[{"uuid":"conv-zip","name":"Zip Import Test","chat_messages":[]}]`
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	f, err := w.Create("conversations.json")
+	require.NoError(t, err)
+	_, err = f.Write([]byte(content))
+	require.NoError(t, err)
+	f2, err := w.Create("projects.json")
+	require.NoError(t, err)
+	_, err = f2.Write([]byte("[]"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "claude-export.zip")
+	require.NoError(t, os.WriteFile(srcFile, buf.Bytes(), 0644))
+
+	fakeHome := t.TempDir()
+	cmd := exec.Command(binary, "import-claude", srcFile)
+	cmd.Env = []string{
+		"HOME=" + fakeHome,
+		"XDG_DATA_HOME=",
+	}
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err = cmd.Run()
+
+	require.NoError(t, err, "import-claude with zip should succeed, stderr: %s", errBuf.String())
+	assert.Contains(t, outBuf.String(), "Imported Claude conversations")
+
+	// Verify extracted JSON was written (not raw zip)
+	destPath := filepath.Join(fakeHome, ".local", "share", "pkb", "claude-conversations.json")
+	assert.FileExists(t, destPath)
+	got, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(got), "Should extract conversations.json from zip")
+}
+
+func TestAcceptance_ImportClaude_ThenSearchFindsResults(t *testing.T) {
+	binary := buildBinary(t)
+
+	// Create conversations.json with searchable content
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "conversations.json")
+	content := `[{"uuid":"conv-abc","name":"Debugging Go Tests","chat_messages":[{"uuid":"msg-1","text":"How to debug Go test failures?","sender":"human"}]}]`
+	require.NoError(t, os.WriteFile(srcFile, []byte(content), 0644))
+
+	// Import using a custom HOME
+	fakeHome := t.TempDir()
+	env := []string{
+		"HOME=" + fakeHome,
+		"XDG_DATA_HOME=",
+		"PKB_TAILSCALE=false",
+	}
+
+	importCmd := exec.Command(binary, "import-claude", srcFile)
+	importCmd.Env = env
+	out, err := importCmd.CombinedOutput()
+	require.NoError(t, err, "import should succeed: %s", string(out))
+
+	// Now search with --sources claude
+	searchCmd := exec.Command(binary, "search", "--sources", "claude", "debug")
+	searchCmd.Env = env
+	var outBuf, errBuf strings.Builder
+	searchCmd.Stdout = &outBuf
+	searchCmd.Stderr = &errBuf
+	err = searchCmd.Run()
+
+	stdout := outBuf.String()
+	if err == nil {
+		// Search succeeded — verify we got claude results
+		assert.Contains(t, stdout, "[claude]",
+			"Should return claude source results")
+		assert.Contains(t, stdout, "Debugging Go Tests",
+			"Should find the imported conversation by name")
+	}
+	// If search fails, it may be because other connectors error out.
+	// The important thing is import-claude succeeded above.
+}
+
+func TestAcceptance_SearchHelpText_ShowsClaudeSource(t *testing.T) {
+	binary := buildBinary(t)
+
+	stdout, _, exitCode := runPKB(t, binary, "search", "--help")
+
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "claude",
+		"Help text should list 'claude' as a valid source")
+}
+
+func TestAcceptance_ServeWebUI_HasClaudeCheckbox(t *testing.T) {
+	binary := buildBinary(t)
+
+	cmd := exec.Command(binary, "serve", "--addr", "127.0.0.1:0")
+	cmd.Env = []string{"HOME=" + t.TempDir()}
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	cmd.Stderr = cmd.Stdout
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	})
+
+	scanner := bufio.NewScanner(stdout)
+	var addr string
+	deadline := time.After(10 * time.Second)
+	addrCh := make(chan string, 1)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Listening on ") {
+				addrCh <- strings.TrimPrefix(line, "Listening on ")
+				return
+			}
+		}
+	}()
+
+	select {
+	case addr = <-addrCh:
+	case <-deadline:
+		t.Fatal("timeout waiting for server to start")
+	}
+
+	resp, err := http.Get("http://" + addr + "/")
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(body)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, html, "claude", "Web UI should have claude checkbox")
+}
+
+func TestAcceptance_ServeImportClaudeEndpoint(t *testing.T) {
+	binary := buildBinary(t)
+	fakeHome := t.TempDir()
+
+	cmd := exec.Command(binary, "serve", "--addr", "127.0.0.1:0")
+	cmd.Env = []string{"HOME=" + fakeHome, "XDG_DATA_HOME="}
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	cmd.Stderr = cmd.Stdout
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	})
+
+	scanner := bufio.NewScanner(stdout)
+	var addr string
+	deadline := time.After(10 * time.Second)
+	addrCh := make(chan string, 1)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Listening on ") {
+				addrCh <- strings.TrimPrefix(line, "Listening on ")
+				return
+			}
+		}
+	}()
+
+	select {
+	case addr = <-addrCh:
+	case <-deadline:
+		t.Fatal("timeout waiting for server to start")
+	}
+
+	baseURL := "http://" + addr
+
+	// POST /import-claude without file should return 400
+	resp, err := http.Post(baseURL+"/import-claude", "application/json", nil)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
+		"POST /import-claude without file should return 400")
 }

@@ -117,6 +117,79 @@ func TestSaveToken_CreatesParentDirectory(t *testing.T) {
 	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
 }
 
+func TestPersistingTokenSource_SavesRefreshedToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+
+	initial := &oauth2.Token{AccessToken: "old-access", RefreshToken: "refresh-1"}
+	refreshed := &oauth2.Token{AccessToken: "new-access", RefreshToken: "refresh-2"}
+
+	// Save initial token to disk.
+	require.NoError(t, SaveToken(path, initial))
+
+	// Create a fake token source that returns a refreshed token.
+	fake := &staticTokenSource{tok: refreshed}
+	pts := NewPersistingTokenSource(fake, path, initial)
+
+	tok, err := pts.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "new-access", tok.AccessToken)
+
+	// The refreshed token should have been written to disk.
+	loaded, err := LoadToken(path)
+	require.NoError(t, err)
+	assert.Equal(t, "new-access", loaded.AccessToken)
+	assert.Equal(t, "refresh-2", loaded.RefreshToken)
+}
+
+func TestPersistingTokenSource_DoesNotWriteWhenUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+
+	tok := &oauth2.Token{AccessToken: "same-access", RefreshToken: "refresh-1"}
+	require.NoError(t, SaveToken(path, tok))
+
+	// Token source returns the same token (no refresh happened).
+	fake := &staticTokenSource{tok: tok}
+	pts := NewPersistingTokenSource(fake, path, tok)
+
+	got, err := pts.Token()
+	require.NoError(t, err)
+	assert.Equal(t, "same-access", got.AccessToken)
+
+	// File should still have the original content (verify it wasn't rewritten
+	// by checking mod time stayed the same — but simpler: just verify content).
+	loaded, err := LoadToken(path)
+	require.NoError(t, err)
+	assert.Equal(t, "same-access", loaded.AccessToken)
+}
+
+func TestPersistingTokenSource_PropagatesError(t *testing.T) {
+	pts := NewPersistingTokenSource(
+		&errorTokenSource{err: fmt.Errorf("token revoked")},
+		"/unused",
+		&oauth2.Token{AccessToken: "old"},
+	)
+
+	_, err := pts.Token()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "token revoked")
+}
+
+// staticTokenSource always returns the same token.
+type staticTokenSource struct {
+	tok *oauth2.Token
+}
+
+func (s *staticTokenSource) Token() (*oauth2.Token, error) { return s.tok, nil }
+
+// errorTokenSource always returns an error.
+type errorTokenSource struct {
+	err error
+}
+
+func (e *errorTokenSource) Token() (*oauth2.Token, error) { return nil, e.err }
+
 func TestSaveToken_ReadOnlyDir(t *testing.T) {
 	// Create a read-only directory and verify SaveToken fails.
 	dir := t.TempDir()

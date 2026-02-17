@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"os/exec"
 	"os/signal"
@@ -23,6 +24,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	pkbtailscale "github.com/cwoolley/personal-knowledge-base/internal/tailscale"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
+	claudeconn "github.com/cwoolley/personal-knowledge-base/internal/connectors/claude"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/notion"
@@ -134,6 +136,54 @@ func searchHandler(searchFn SearchFunc) http.Handler {
 	})
 }
 
+// importClaudeHandler returns an http.Handler for the POST /import-claude endpoint.
+func importClaudeHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing file upload"})
+			return
+		}
+		defer file.Close()
+
+		data, err := io.ReadAll(file)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "read upload: " + err.Error()})
+			return
+		}
+
+		conversations, err := claudeconn.ExtractConversationsJSON(data)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "extract conversations: " + err.Error()})
+			return
+		}
+		data = conversations
+
+		destPath := claudeconn.DefaultExportPath()
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "create directory: " + err.Error()})
+			return
+		}
+		if err := os.WriteFile(destPath, data, 0600); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "save file: " + err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "path": destPath})
+	})
+}
+
 // startEmbeddedServer starts a server on :0 with the search handler and
 // returns an apiclient pointed at it plus a cleanup function.
 var startEmbeddedServer = func(searchFn SearchFunc) (*apiclient.Client, func(), error) {
@@ -190,7 +240,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail,obsidian,notion)")
+	searchCmd.Flags().StringSlice("sources", nil, "Limit search to specific sources (comma-separated: google-drive,gmail,obsidian,notion,claude)")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
@@ -217,6 +267,7 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 
 			srv := server.New(addr)
 			srv.Handle("GET /search", searchHandler(searchFn))
+			srv.Handle("POST /import-claude", importClaudeHandler())
 			srv.Handle("GET /", pkbweb.Handler())
 
 			if err := srv.Listen(); err != nil {
@@ -303,11 +354,41 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 		},
 	}
 
+	importClaudeCmd := &cobra.Command{
+		Use:   "import-claude <path-to-export.zip-or-conversations.json>",
+		Short: "Import Claude.ai exported conversations for searching",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			srcPath := args[0]
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return fmt.Errorf("read file: %w", err)
+			}
+
+			conversations, err := claudeconn.ExtractConversationsJSON(data)
+			if err != nil {
+				return fmt.Errorf("extract conversations: %w", err)
+			}
+
+			destPath := claudeconn.DefaultExportPath()
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return fmt.Errorf("create data directory: %w", err)
+			}
+			if err := os.WriteFile(destPath, conversations, 0600); err != nil {
+				return fmt.Errorf("write file: %w", err)
+			}
+
+			fmt.Fprintf(out, "Imported Claude conversations to %s\n", destPath)
+			return nil
+		},
+	}
+
 	root.AddCommand(searchCmd)
 	root.AddCommand(serveCmd)
 	root.AddCommand(interactiveCmd)
 	root.AddCommand(versionCmd)
 	root.AddCommand(authCmd)
+	root.AddCommand(importClaudeCmd)
 	return root
 }
 
@@ -360,7 +441,12 @@ func buildSearchFn() SearchFunc {
 				"You may need to complete the OAuth flow first.", appCfg.TokenPath, err)
 		}
 
-		client, err := newAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
+		// Wrap in a PersistingTokenSource so refreshed tokens are saved to disk.
+		tokenSource := gdrive.NewPersistingTokenSource(
+			oauthCfg.TokenSource(ctx, tok), appCfg.TokenPath, tok,
+		)
+
+		client, err := newAPIClient(ctx, tokenSource)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Google Drive client: %w", err)
 		}
@@ -371,14 +457,14 @@ func buildSearchFn() SearchFunc {
 		allConnectors := []connectors.Connector{driveConnector}
 
 		// Create Gmail connector with the same token source.
-		gmailClient, err := newGmailAPIClient(ctx, oauthCfg.TokenSource(ctx, tok))
+		gmailClient, err := newGmailAPIClient(ctx, tokenSource)
 		if err == nil {
 			allConnectors = append(allConnectors, gmail.NewConnector(gmailClient))
 		}
 
 		// Create Obsidian connector if folder ID is configured.
 		if appCfg.ObsidianFolderID != "" {
-			obsClient, err := newObsidianClient(ctx, oauthCfg.TokenSource(ctx, tok), appCfg.ObsidianFolderID)
+			obsClient, err := newObsidianClient(ctx, tokenSource, appCfg.ObsidianFolderID)
 			if err == nil {
 				allConnectors = append(allConnectors, obsidian.NewConnector(obsClient, appCfg.ObsidianFolderID))
 			}
@@ -388,6 +474,13 @@ func buildSearchFn() SearchFunc {
 		if appCfg.NotionToken != "" {
 			notionClient := notion.NewAPIClient(appCfg.NotionToken)
 			allConnectors = append(allConnectors, notion.NewConnector(notionClient))
+		}
+
+		// Create Claude connector if export file exists.
+		claudePath := claudeconn.DefaultExportPath()
+		if _, err := os.Stat(claudePath); err == nil {
+			claudeClient := claudeconn.NewFileClient(claudePath)
+			allConnectors = append(allConnectors, claudeconn.NewConnector(claudeClient))
 		}
 
 		engine := search.New(allConnectors...)

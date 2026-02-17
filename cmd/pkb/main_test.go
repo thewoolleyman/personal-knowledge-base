@@ -1,11 +1,13 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +24,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/apiclient"
 	"github.com/cwoolley/personal-knowledge-base/internal/config"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
+	claudeconn "github.com/cwoolley/personal-knowledge-base/internal/connectors/claude"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/obsidian"
@@ -306,7 +309,9 @@ func TestServeCommand_TailscaleMode_PrintsTailscaleURL(t *testing.T) {
 }
 
 func TestServeCommand_UsesServerAddrFromConfig(t *testing.T) {
-	t.Setenv("PKB_SERVER_ADDR", ":9000")
+	// Use :0 to get an ephemeral port — never hard-code a port that might
+	// collide with production (:9000) or other services.
+	t.Setenv("PKB_SERVER_ADDR", ":0")
 
 	testCh := make(chan os.Signal, 1)
 	origMakeSignalCh := makeSignalCh
@@ -323,7 +328,10 @@ func TestServeCommand_UsesServerAddrFromConfig(t *testing.T) {
 	}()
 
 	_ = waitForServe(t, buf, errCh)
-	assert.Contains(t, buf.String(), "Listening on [::]:9000")
+	// The env var was honored (not the default :8080) — server started on an ephemeral port.
+	output := buf.String()
+	assert.Contains(t, output, "Listening on")
+	assert.NotContains(t, output, ":8080", "should use PKB_SERVER_ADDR, not the default :8080")
 
 	testCh <- syscall.SIGINT
 	select {
@@ -1218,4 +1226,169 @@ func TestAuthCommand_SuccessPath(t *testing.T) {
 	loaded, err := gdrive.LoadToken(tokenPath)
 	require.NoError(t, err)
 	assert.Equal(t, "fresh-token", loaded.AccessToken)
+}
+
+func TestImportClaudeCommand_IsRegistered(t *testing.T) {
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"help"}, noopSearch, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "import-claude")
+}
+
+func TestImportClaudeCommand_CopiesFile(t *testing.T) {
+	// Create source file with valid JSON.
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "conversations.json")
+	content := `[{"uuid":"conv-1","name":"Test chat","chat_messages":[]}]`
+	require.NoError(t, os.WriteFile(srcPath, []byte(content), 0644))
+
+	// Override DefaultExportPath to write to temp dir.
+	destDir := t.TempDir()
+	destPath := filepath.Join(destDir, ".local", "share", "pkb", "claude-conversations.json")
+
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"import-claude", srcPath}, noopSearch, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Imported Claude conversations")
+
+	// Verify file was copied.
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(data))
+}
+
+func TestImportClaudeCommand_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"import-claude"}, noopSearch, &buf)
+	assert.Error(t, err)
+}
+
+func TestImportClaudeCommand_MissingFile(t *testing.T) {
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"import-claude", "/nonexistent/file.json"}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read file")
+}
+
+func TestImportClaudeCommand_AcceptsZip(t *testing.T) {
+	content := `[{"uuid":"conv-1","name":"Zip chat","chat_messages":[]}]`
+	zipData := createTestZipArchive(t, map[string]string{
+		"conversations.json": content,
+		"projects.json":      "[]",
+	})
+
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "claude-export.zip")
+	require.NoError(t, os.WriteFile(srcPath, zipData, 0644))
+
+	destDir := t.TempDir()
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"import-claude", srcPath}, noopSearch, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Imported Claude conversations")
+
+	destPath := filepath.Join(destDir, ".local", "share", "pkb", "claude-conversations.json")
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(data))
+}
+
+func TestImportClaudeUploadHandler_AcceptsZip(t *testing.T) {
+	content := `[{"uuid":"conv-1","name":"Upload zip chat","chat_messages":[]}]`
+	zipData := createTestZipArchive(t, map[string]string{
+		"conversations.json": content,
+	})
+
+	destDir := t.TempDir()
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	body, contentType := createMultipartBody(t, "file", "export.zip", string(zipData))
+	req := httptest.NewRequest("POST", "/import-claude", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	importClaudeHandler().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	destPath := filepath.Join(destDir, ".local", "share", "pkb", "claude-conversations.json")
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(data))
+}
+
+func createTestZipArchive(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for name, content := range files {
+		f, err := w.Create(name)
+		require.NoError(t, err)
+		_, err = f.Write([]byte(content))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+func TestImportClaudeUploadHandler_Success(t *testing.T) {
+	destDir := t.TempDir()
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	content := `[{"uuid":"conv-1","name":"Uploaded chat","chat_messages":[]}]`
+	body, contentType := createMultipartBody(t, "file", "conversations.json", content)
+
+	req := httptest.NewRequest("POST", "/import-claude", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	importClaudeHandler().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+
+	// Verify file was written.
+	destPath := filepath.Join(destDir, ".local", "share", "pkb", "claude-conversations.json")
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(data))
+}
+
+func TestImportClaudeUploadHandler_MissingFile(t *testing.T) {
+	req := httptest.NewRequest("POST", "/import-claude", nil)
+	rec := httptest.NewRecorder()
+
+	importClaudeHandler().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func createMultipartBody(t *testing.T, fieldName, fileName, content string) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile(fieldName, fileName)
+	require.NoError(t, err)
+	_, err = io.Copy(part, strings.NewReader(content))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	return &buf, writer.FormDataContentType()
 }

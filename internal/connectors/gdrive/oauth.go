@@ -36,6 +36,34 @@ func encodeAndClose(wc io.WriteCloser, token *oauth2.Token) error {
 	return nil
 }
 
+// PersistingTokenSource wraps an oauth2.TokenSource and writes the token back
+// to disk whenever it is refreshed. This ensures rotated refresh tokens are not
+// lost between runs.
+type PersistingTokenSource struct {
+	src  oauth2.TokenSource
+	path string
+	last *oauth2.Token
+}
+
+// NewPersistingTokenSource creates a token source that persists refreshed tokens.
+func NewPersistingTokenSource(src oauth2.TokenSource, path string, initial *oauth2.Token) *PersistingTokenSource {
+	return &PersistingTokenSource{src: src, path: path, last: initial}
+}
+
+// Token returns a valid token, saving it to disk if it was refreshed.
+func (p *PersistingTokenSource) Token() (*oauth2.Token, error) {
+	tok, err := p.src.Token()
+	if err != nil {
+		return nil, err
+	}
+	// If the token changed (refreshed), persist it.
+	if tok.AccessToken != p.last.AccessToken {
+		_ = SaveToken(p.path, tok) // best-effort; don't fail the request
+		p.last = tok
+	}
+	return tok, nil
+}
+
 // LoadToken reads an OAuth2 token from a JSON file.
 func LoadToken(path string) (*oauth2.Token, error) {
 	f, err := os.Open(path)
