@@ -549,6 +549,7 @@ func TestBuildSearchFn_APIClientError(t *testing.T) {
 func TestBuildSearchFn_SuccessPath(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir()) // Isolate from local Claude export
 
 	dir := t.TempDir()
 	tokenPath := filepath.Join(dir, "token.json")
@@ -948,6 +949,7 @@ func TestServeSearch_SearchError_Returns500(t *testing.T) {
 func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	dir := t.TempDir()
 	tokenPath := filepath.Join(dir, "token.json")
@@ -972,6 +974,7 @@ func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
 func TestBuildSearchFn_ObsidianConnectorRegistered_WhenFolderIDSet(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "1tK3Z1ie-CZMAlvBdNb6hNlHfFyrY-mPJ")
 
 	dir := t.TempDir()
@@ -991,6 +994,7 @@ func TestBuildSearchFn_ObsidianConnectorRegistered_WhenFolderIDSet(t *testing.T)
 func TestBuildSearchFn_ObsidianClientError_FallsBackGracefully(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "folder-123")
 
 	dir := t.TempDir()
@@ -1015,6 +1019,7 @@ func TestBuildSearchFn_ObsidianClientError_FallsBackGracefully(t *testing.T) {
 func TestBuildSearchFn_ObsidianSkipped_WhenFolderIDEmpty(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("PKB_OBSIDIAN_FOLDER_ID", "")
 
 	dir := t.TempDir()
@@ -1032,6 +1037,7 @@ func TestBuildSearchFn_ObsidianSkipped_WhenFolderIDEmpty(t *testing.T) {
 func TestBuildSearchFn_NotionConnectorRegistered_WhenTokenSet(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("PKB_NOTION_TOKEN", "ntn_test_token")
 
 	dir := t.TempDir()
@@ -1051,6 +1057,7 @@ func TestBuildSearchFn_NotionConnectorRegistered_WhenTokenSet(t *testing.T) {
 func TestBuildSearchFn_NotionSkipped_WhenTokenEmpty(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("PKB_NOTION_TOKEN", "")
 
 	dir := t.TempDir()
@@ -1063,6 +1070,34 @@ func TestBuildSearchFn_NotionSkipped_WhenTokenEmpty(t *testing.T) {
 	fn := buildSearchFn()
 	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err) // API error, but notion path is skipped
+}
+
+func TestBuildSearchFn_ClaudeConnectorRegistered_WhenExportExists(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+
+	// Create a Claude export file at the XDG data path
+	xdgDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdgDir)
+	claudeDir := filepath.Join(xdgDir, "pkb")
+	require.NoError(t, os.MkdirAll(claudeDir, 0755))
+	content := `[{"uuid":"conv-1","name":"Test Chat","chat_messages":[{"uuid":"msg-1","text":"hello","sender":"human"}]}]`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "claude-conversations.json"), []byte(content), 0644))
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	fn := buildSearchFn()
+	// Search with sources=claude to only hit Claude connector
+	results, err := fn(context.Background(), "hello", []string{"claude"})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "claude", results[0].Source)
+	assert.Contains(t, results[0].Title, "Test Chat")
 }
 
 // --- auth command tests ---

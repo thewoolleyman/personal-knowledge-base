@@ -101,19 +101,21 @@ func extractFromZip(data []byte) ([]byte, error) {
 	}
 	for _, f := range r.File {
 		if f.Name == "conversations.json" {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, fmt.Errorf("open conversations.json in zip: %w", err)
-			}
-			defer rc.Close()
-			contents, err := io.ReadAll(rc)
-			if err != nil {
-				return nil, fmt.Errorf("read conversations.json from zip: %w", err)
-			}
-			return contents, nil
+			return readZipFile(f)
 		}
 	}
 	return nil, fmt.Errorf("zip archive does not contain conversations.json")
+}
+
+// readZipFile opens and reads a zip file entry. Separated for testability
+// of the error path (requires a corrupted zip entry to trigger).
+var readZipFile = func(f *zip.File) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, fmt.Errorf("read conversations.json from zip: %w", err)
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
 }
 
 // userHomeDir returns the user's home directory. Overridden in tests.

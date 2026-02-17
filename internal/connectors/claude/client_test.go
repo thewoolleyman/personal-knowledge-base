@@ -209,6 +209,21 @@ func TestExtractConversationsJSON_InvalidZip(t *testing.T) {
 	assert.Contains(t, err.Error(), "open zip archive")
 }
 
+func TestExtractConversationsJSON_ZipReadError(t *testing.T) {
+	orig := readZipFile
+	readZipFile = func(f *zip.File) ([]byte, error) {
+		return nil, fmt.Errorf("simulated read error")
+	}
+	t.Cleanup(func() { readZipFile = orig })
+
+	zipData := createTestZip(t, map[string]string{
+		"conversations.json": "[]",
+	})
+	_, err := ExtractConversationsJSON(zipData)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "simulated read error")
+}
+
 func TestExtractConversationsJSON_EmptyData(t *testing.T) {
 	got, err := ExtractConversationsJSON([]byte{})
 	require.NoError(t, err)

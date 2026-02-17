@@ -11,10 +11,10 @@
       max-width: 800px;
       margin: 0 auto;
       padding: 2rem 1rem;
-      background: #fafafa;
-      color: #333;
+      background: #1a1a2e;
+      color: #e0e0e0;
     }
-    h1 { margin-bottom: 1.5rem; font-size: 1.5rem; }
+    h1 { margin-bottom: 1.5rem; font-size: 1.5rem; color: #f0f0f0; }
     .search-form {
       display: flex;
       gap: 0.5rem;
@@ -24,19 +24,22 @@
       flex: 1;
       padding: 0.6rem 1rem;
       font-size: 1rem;
-      border: 1px solid #ccc;
+      border: 1px solid #3a3a5c;
       border-radius: 4px;
+      background: #16213e;
+      color: #e0e0e0;
     }
+    .search-form input[type="text"]::placeholder { color: #888; }
     .search-form button {
       padding: 0.6rem 1.5rem;
       font-size: 1rem;
-      background: #2563eb;
+      background: #3b82f6;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
     }
-    .search-form button:hover { background: #1d4ed8; }
+    .search-form button:hover { background: #2563eb; }
     .sources {
       margin-bottom: 1.5rem;
       display: flex;
@@ -47,51 +50,51 @@
       align-items: center;
       gap: 0.3rem;
       font-size: 0.9rem;
-      color: #555;
+      color: #aaa;
     }
     #results { list-style: none; }
     #results li {
-      background: white;
-      border: 1px solid #e5e7eb;
+      background: #16213e;
+      border: 1px solid #2a2a4a;
       border-radius: 6px;
       padding: 1rem;
       margin-bottom: 0.75rem;
     }
     #results li .title {
       font-weight: 600;
-      color: #1a1a1a;
+      color: #f0f0f0;
       margin-bottom: 0.25rem;
     }
     #results li .snippet {
       font-size: 0.9rem;
-      color: #666;
+      color: #aaa;
       margin-bottom: 0.25rem;
     }
     #results li .url a {
       font-size: 0.85rem;
-      color: #2563eb;
+      color: #60a5fa;
       text-decoration: none;
     }
     #results li .url a:hover { text-decoration: underline; }
     #results li .source {
       font-size: 0.8rem;
-      color: #999;
+      color: #777;
       margin-top: 0.25rem;
     }
     #status {
-      color: #666;
+      color: #aaa;
       font-size: 0.9rem;
       margin-bottom: 1rem;
     }
     #error {
-      color: #dc2626;
+      color: #f87171;
       font-size: 0.9rem;
       margin-bottom: 1rem;
     }
   </style>
 </head>
 <body>
-  <h1>Search Your Knowledge Base <a href="https://github.com/thewoolleyman/personal-knowledge-base" style="font-size:0.6em;font-weight:normal;margin-left:0.5em;color:#2563eb;text-decoration:none">GitHub</a></h1>
+  <h1>Search Your Knowledge Base <a href="https://github.com/thewoolleyman/personal-knowledge-base" style="font-size:0.6em;font-weight:normal;margin-left:0.5em;color:#60a5fa;text-decoration:none">GitHub</a></h1>
 
   <form class="search-form" id="searchForm">
     <input type="text" id="query" placeholder="Search..." autofocus>
@@ -106,11 +109,11 @@
     <label><input type="checkbox" name="source" value="claude"> Claude</label>
   </div>
 
-  <details style="margin-bottom:1.5rem;font-size:0.9rem;color:#555">
+  <details style="margin-bottom:1.5rem;font-size:0.9rem;color:#aaa">
     <summary style="cursor:pointer">Import Claude conversations</summary>
     <div style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center">
-      <input type="file" id="claudeFile" accept=".json">
-      <button type="button" id="uploadBtn" style="padding:0.4rem 1rem;font-size:0.85rem;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer">Upload</button>
+      <input type="file" id="claudeFile" accept=".json,.zip">
+      <button type="button" id="uploadBtn" style="padding:0.4rem 1rem;font-size:0.85rem;background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer">Upload</button>
       <span id="uploadStatus" style="font-size:0.85rem"></span>
     </div>
   </details>
@@ -181,26 +184,26 @@
       const uploadStatus = document.getElementById('uploadStatus');
       if (!fileInput.files.length) {
         uploadStatus.textContent = 'Please select a file.';
-        uploadStatus.style.color = '#dc2626';
+        uploadStatus.style.color = '#f87171';
         return;
       }
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
       uploadStatus.textContent = 'Uploading...';
-      uploadStatus.style.color = '#666';
+      uploadStatus.style.color = '#aaa';
       try {
         const resp = await fetch('/import-claude', { method: 'POST', body: formData });
         const data = await resp.json();
         if (resp.ok) {
           uploadStatus.textContent = 'Imported successfully.';
-          uploadStatus.style.color = '#16a34a';
+          uploadStatus.style.color = '#4ade80';
         } else {
           uploadStatus.textContent = data.error || 'Upload failed.';
-          uploadStatus.style.color = '#dc2626';
+          uploadStatus.style.color = '#f87171';
         }
       } catch (err) {
         uploadStatus.textContent = 'Network error: ' + err.message;
-        uploadStatus.style.color = '#dc2626';
+        uploadStatus.style.color = '#f87171';
       }
     });
   </script>
