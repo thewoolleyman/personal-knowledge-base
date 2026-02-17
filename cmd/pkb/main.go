@@ -136,46 +136,49 @@ func searchHandler(searchFn SearchFunc) http.Handler {
 	})
 }
 
+// importClaudeData extracts conversations from raw data and saves to the default path.
+func importClaudeData(data []byte) (string, error) {
+	conversations, err := claudeconn.ExtractConversationsJSON(data)
+	if err != nil {
+		return "", fmt.Errorf("extract conversations: %w", err)
+	}
+
+	destPath := claudeconn.DefaultExportPath()
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return "", fmt.Errorf("create directory: %w", err)
+	}
+	if err := os.WriteFile(destPath, conversations, 0600); err != nil {
+		return "", fmt.Errorf("save file: %w", err)
+	}
+	return destPath, nil
+}
+
+// readFormFileBytes reads the uploaded file from a multipart form request.
+func readFormFileBytes(r *http.Request) ([]byte, error) {
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(file)
+}
+
 // importClaudeHandler returns an http.Handler for the POST /import-claude endpoint.
 func importClaudeHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		file, _, err := r.FormFile("file")
+		data, err := readFormFileBytes(r)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing file upload"})
 			return
 		}
-		defer file.Close()
 
-		data, err := io.ReadAll(file)
+		destPath, err := importClaudeData(data)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "read upload: " + err.Error()})
-			return
-		}
-
-		conversations, err := claudeconn.ExtractConversationsJSON(data)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "extract conversations: " + err.Error()})
-			return
-		}
-		data = conversations
-
-		destPath := claudeconn.DefaultExportPath()
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "create directory: " + err.Error()})
-			return
-		}
-		if err := os.WriteFile(destPath, data, 0600); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "save file: " + err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 
@@ -365,17 +368,9 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 				return fmt.Errorf("read file: %w", err)
 			}
 
-			conversations, err := claudeconn.ExtractConversationsJSON(data)
+			destPath, err := importClaudeData(data)
 			if err != nil {
-				return fmt.Errorf("extract conversations: %w", err)
-			}
-
-			destPath := claudeconn.DefaultExportPath()
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				return fmt.Errorf("create data directory: %w", err)
-			}
-			if err := os.WriteFile(destPath, conversations, 0600); err != nil {
-				return fmt.Errorf("write file: %w", err)
+				return err
 			}
 
 			fmt.Fprintf(out, "Imported Claude conversations to %s\n", destPath)

@@ -1268,6 +1268,18 @@ func TestImportClaudeCommand_MissingArg(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestImportClaudeCommand_InvalidZip(t *testing.T) {
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "bad.zip")
+	// PK magic bytes but corrupt zip
+	require.NoError(t, os.WriteFile(srcPath, []byte{0x50, 0x4B, 0x00, 0x00, 0xFF}, 0644))
+
+	var buf bytes.Buffer
+	err := runWithOutput([]string{"import-claude", srcPath}, noopSearch, &buf)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "extract conversations")
+}
+
 func TestImportClaudeCommand_MissingFile(t *testing.T) {
 	var buf bytes.Buffer
 	err := runWithOutput([]string{"import-claude", "/nonexistent/file.json"}, noopSearch, &buf)
@@ -1370,6 +1382,89 @@ func TestImportClaudeUploadHandler_Success(t *testing.T) {
 	data, err := os.ReadFile(destPath)
 	require.NoError(t, err)
 	assert.Equal(t, content, string(data))
+}
+
+func TestImportClaudeData_JSON(t *testing.T) {
+	destDir := t.TempDir()
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	content := []byte(`[{"uuid":"conv-1","name":"Test","chat_messages":[]}]`)
+	path, err := importClaudeData(content)
+	require.NoError(t, err)
+	assert.Contains(t, path, "claude-conversations.json")
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+}
+
+func TestImportClaudeData_Zip(t *testing.T) {
+	destDir := t.TempDir()
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	content := `[{"uuid":"conv-1","name":"Zip","chat_messages":[]}]`
+	zipData := createTestZipArchive(t, map[string]string{"conversations.json": content})
+	path, err := importClaudeData(zipData)
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(got))
+}
+
+func TestImportClaudeData_ExtractError(t *testing.T) {
+	_, err := importClaudeData([]byte{0x50, 0x4B, 0x00, 0x00, 0xFF})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "extract conversations")
+}
+
+func TestImportClaudeData_BadDestDir(t *testing.T) {
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return "/dev/null/impossible", nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	_, err := importClaudeData([]byte(`[]`))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create directory")
+}
+
+func TestImportClaudeData_WriteFileError(t *testing.T) {
+	destDir := t.TempDir()
+	pkbDir := filepath.Join(destDir, ".local", "share", "pkb")
+	require.NoError(t, os.MkdirAll(pkbDir, 0755))
+	require.NoError(t, os.Mkdir(filepath.Join(pkbDir, "claude-conversations.json"), 0755))
+
+	origUserHome := claudeconn.ExportUserHomeDir()
+	claudeconn.SetExportUserHomeDir(func() (string, error) { return destDir, nil })
+	t.Cleanup(func() { claudeconn.SetExportUserHomeDir(origUserHome) })
+	t.Setenv("XDG_DATA_HOME", "")
+
+	_, err := importClaudeData([]byte(`[]`))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "save file")
+}
+
+func TestImportClaudeUploadHandler_InvalidZip(t *testing.T) {
+	// Upload invalid zip data to trigger importClaudeData error through handler
+	badZip := string([]byte{0x50, 0x4B, 0x00, 0x00, 0xFF, 0xFF})
+	body, contentType := createMultipartBody(t, "file", "export.zip", badZip)
+	req := httptest.NewRequest("POST", "/import-claude", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	importClaudeHandler().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "extract conversations")
 }
 
 func TestImportClaudeUploadHandler_MissingFile(t *testing.T) {

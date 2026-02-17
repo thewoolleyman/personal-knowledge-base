@@ -206,6 +206,20 @@ func TestExtractConversationsJSON_InvalidZip(t *testing.T) {
 	input := []byte{0x50, 0x4B, 0x00, 0x00, 0xFF, 0xFF}
 	_, err := ExtractConversationsJSON(input)
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "open zip archive")
+}
+
+func TestExtractConversationsJSON_EmptyData(t *testing.T) {
+	got, err := ExtractConversationsJSON([]byte{})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestExtractConversationsJSON_SingleByte(t *testing.T) {
+	// Only one byte — not enough for zip magic, treated as JSON passthrough
+	got, err := ExtractConversationsJSON([]byte("["))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("["), got)
 }
 
 // createTestZip creates a zip archive in memory with the given files.
