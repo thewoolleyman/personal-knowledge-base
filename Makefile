@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve tailscale-health deploy deploy-local deploy-status deploy-logs deploy-setup
+.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve serve-kill tailscale-health deploy deploy-local deploy-status deploy-logs deploy-setup
 
 BINARY := pkb
 BUILD_DIR := .
@@ -96,6 +96,19 @@ run: build
 ## serve: Build, start the server, and open the web UI in the browser
 serve: build
 	./$(BINARY) serve & sleep 1 && $(OPEN_CMD) http://localhost:8080
+
+## serve-kill: Kill any pkb process listening on port 8080
+serve-kill:
+	@KILLED=0; \
+	for PID in $$(lsof -ti tcp:8080 2>/dev/null); do \
+		CMD=$$(ps -p $$PID -o comm= 2>/dev/null); \
+		case "$$CMD" in \
+			*pkb*) kill $$PID && echo "Killed pkb (PID $$PID)" && KILLED=1;; \
+		esac; \
+	done; \
+	if [ "$$KILLED" -eq 0 ]; then \
+		echo "No pkb process found on port 8080"; \
+	fi
 
 ## tailscale-health: Check the Tailscale health endpoint (run `make build && ./pkb serve` first)
 tailscale-health:
