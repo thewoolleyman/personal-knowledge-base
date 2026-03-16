@@ -267,6 +267,102 @@ func TestSaveTokenAtomic_NoPartialWrite(t *testing.T) {
 	assert.Equal(t, "second", loaded.AccessToken)
 }
 
+func TestSaveTokenAtomic_ReadOnlyDir(t *testing.T) {
+	dir := t.TempDir()
+	readOnlyDir := filepath.Join(dir, "readonly")
+	require.NoError(t, os.Mkdir(readOnlyDir, 0500))
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	err := SaveTokenAtomic(filepath.Join(readOnlyDir, "token.json"), &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create temp token file")
+}
+
+func TestSaveTokenAtomic_MkdirAllFail(t *testing.T) {
+	err := SaveTokenAtomic("/nonexistent/deeply/nested/token.json", &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create token directory")
+}
+
+func TestSaveTokenAtomic_ChmodFail(t *testing.T) {
+	origChmod := osChmod
+	osChmod = func(_ string, _ os.FileMode) error {
+		return fmt.Errorf("chmod injected error")
+	}
+	t.Cleanup(func() { osChmod = origChmod })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+	err := SaveTokenAtomic(path, &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "chmod token file")
+
+	// Temp file should have been cleaned up.
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		assert.False(t, filepath.Ext(e.Name()) == ".tmp", "temp file should be cleaned up")
+	}
+}
+
+func TestSaveTokenAtomic_CreateTempFail(t *testing.T) {
+	origCreateTemp := osCreateTemp
+	osCreateTemp = func(_ string, _ string) (*os.File, error) {
+		return nil, fmt.Errorf("create temp injected error")
+	}
+	t.Cleanup(func() { osCreateTemp = origCreateTemp })
+
+	dir := t.TempDir()
+	err := SaveTokenAtomic(filepath.Join(dir, "token.json"), &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create temp token file")
+}
+
+func TestSaveTokenAtomic_EncodeAndCloseFail_CleansUp(t *testing.T) {
+	// Verify that when encodeAndClose fails (e.g., pre-closed file), the temp
+	// file is cleaned up and SaveTokenAtomic returns an error.
+	origCreateTemp := osCreateTemp
+	osCreateTemp = func(dir string, pattern string) (*os.File, error) {
+		f, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		f.Close() // pre-close so encodeAndClose will fail on write
+		return f, nil
+	}
+	t.Cleanup(func() { osCreateTemp = origCreateTemp })
+
+	dir := t.TempDir()
+	err := SaveTokenAtomic(filepath.Join(dir, "token.json"), &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "save token file")
+}
+
+func TestSaveTokenAtomic_RenameFail(t *testing.T) {
+	origRename := osRename
+	osRename = func(_, _ string) error {
+		return fmt.Errorf("rename injected error")
+	}
+	t.Cleanup(func() { osRename = origRename })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+	err := SaveTokenAtomic(path, &oauth2.Token{AccessToken: "t"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "rename token file")
+}
+
+func TestTokenHealth_NilLastToken(t *testing.T) {
+	// When last token is nil, TokenHealth should report invalid.
+	pts := &PersistingTokenSource{
+		src:  &staticTokenSource{tok: &oauth2.Token{AccessToken: "x"}},
+		path: "/unused",
+		last: nil,
+	}
+	status := pts.TokenHealth()
+	assert.False(t, status.Valid)
+	assert.Contains(t, status.Error, "no token")
+}
+
 // --- Step 2: PersistingTokenSource with SaveFunc and retry ---
 
 // countingSaveFunc tracks how many times save was called.

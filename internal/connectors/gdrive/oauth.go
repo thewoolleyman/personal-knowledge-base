@@ -42,36 +42,40 @@ func encodeAndClose(wc io.WriteCloser, token *oauth2.Token) error {
 
 // SaveTokenAtomic writes an OAuth2 token to a file atomically by writing to a
 // temporary file in the same directory and then renaming it into place.
+// The write, chmod, and rename steps are done via package-level functions
+// that can be overridden in tests to simulate errors.
 func SaveTokenAtomic(path string, token *oauth2.Token) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create token directory: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".token-*.tmp")
+	tmp, err := osCreateTemp(dir, ".token-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp token file: %w", err)
 	}
 	tmpName := tmp.Name()
 
-	if err := json.NewEncoder(tmp).Encode(token); err != nil {
-		tmp.Close()
+	if err := encodeAndClose(tmp, token); err != nil {
 		os.Remove(tmpName)
-		return fmt.Errorf("encode token: %w", err)
+		return err
 	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("close temp token file: %w", err)
-	}
-	if err := os.Chmod(tmpName, 0600); err != nil {
+	if err := osChmod(tmpName, 0600); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("chmod token file: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := osRename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("rename token file: %w", err)
 	}
 	return nil
 }
+
+// OS functions overridden in tests to simulate errors.
+var (
+	osCreateTemp = os.CreateTemp
+	osChmod      = os.Chmod
+	osRename     = os.Rename
+)
 
 // TokenChecker provides health information about the current token.
 type TokenChecker interface {
