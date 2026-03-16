@@ -1,4 +1,4 @@
-.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve serve-kill tailscale-health deploy deploy-local deploy-status deploy-logs deploy-setup
+.PHONY: help build test test-accept test-int test-live test-e2e test-all lint lint-actions vet tidy clean run verify-hooks version scan-secrets scan-secrets-staged setup-hooks open-cicd-webpage serve serve-kill tailscale-health token-health deploy deploy-local deploy-status deploy-logs deploy-setup
 
 BINARY := pkb
 BUILD_DIR := .
@@ -115,6 +115,10 @@ tailscale-health:
 	@IP=$$(tailscale ip -4 2>/dev/null) || { echo "Error: tailscale not running"; exit 1; }; \
 	echo "Checking http://$$IP:9000/health ..."; \
 	curl -sf "http://$$IP:9000/health" && echo "" || { echo "Error: server not responding. Run: make build && PKB_TAILSCALE=true ./pkb serve"; exit 1; }
+
+## token-health: Check OAuth token health via the /health endpoint
+token-health:
+	@curl -sf http://localhost:9000/health | python3 -m json.tool 2>/dev/null || curl -sf http://localhost:8080/health | python3 -m json.tool 2>/dev/null || echo "Error: server not responding on port 9000 or 8080"
 
 ## open-cicd-webpage: Open the GitHub Actions CI/CD page in the default browser
 open-cicd-webpage:

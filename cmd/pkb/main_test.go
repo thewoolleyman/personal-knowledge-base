@@ -28,6 +28,7 @@ import (
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gdrive"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/gmail"
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors/obsidian"
+	"github.com/cwoolley/personal-knowledge-base/internal/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -153,7 +154,7 @@ func TestSearchCommand_TruncatesLongSnippet(t *testing.T) {
 }
 
 func TestRun_ReturnsNilOnSuccess(t *testing.T) {
-	err := run([]string{}, noopSearch)
+	err := run([]string{}, noopSearch, nil)
 	assert.NoError(t, err)
 }
 
@@ -176,7 +177,7 @@ func TestSearchCommand_PrintsResults(t *testing.T) {
 }
 
 func TestSearchCommand_NoQuery(t *testing.T) {
-	err := run([]string{"search"}, noopSearch)
+	err := run([]string{"search"}, noopSearch, nil)
 	assert.Error(t, err)
 }
 
@@ -248,7 +249,7 @@ func TestBuildSearchFn_UsesConfig(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
@@ -260,7 +261,7 @@ func TestServeCommand_IsRegistered(t *testing.T) {
 		return nil, nil
 	}
 	var buf bytes.Buffer
-	cmd := newRootCmd(mockSearch, &buf)
+	cmd := newRootCmd(mockSearch, &buf, nil)
 
 	// The serve subcommand must exist.
 	serveCmd, _, err := cmd.Find([]string{"serve"})
@@ -411,7 +412,7 @@ func TestInteractiveCommand_IsRegistered(t *testing.T) {
 		return nil, nil
 	}
 	var buf bytes.Buffer
-	cmd := newRootCmd(mockSearch, &buf)
+	cmd := newRootCmd(mockSearch, &buf, nil)
 
 	interactiveCmd, _, err := cmd.Find([]string{"interactive"})
 	require.NoError(t, err)
@@ -477,7 +478,7 @@ func TestVersionCommand_PrintsVersion(t *testing.T) {
 
 func TestVersionCommand_IsRegistered(t *testing.T) {
 	var buf bytes.Buffer
-	cmd := newRootCmd(noopSearch, &buf)
+	cmd := newRootCmd(noopSearch, &buf, nil)
 
 	versionCmd, _, err := cmd.Find([]string{"version"})
 	require.NoError(t, err)
@@ -493,7 +494,7 @@ func TestBuildSearchFn_PropagatesConfigError(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Google Drive credentials not configured")
@@ -506,7 +507,7 @@ func TestBuildSearchFn_ConfigLoadError(t *testing.T) {
 	}
 	t.Cleanup(func() { loadConfig = orig })
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load config")
@@ -517,7 +518,7 @@ func TestBuildSearchFn_TokenLoadError(t *testing.T) {
 	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
 	t.Setenv("PKB_TOKEN_PATH", "/nonexistent/path/token.json")
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err := fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load OAuth token")
@@ -540,7 +541,7 @@ func TestBuildSearchFn_APIClientError(t *testing.T) {
 	}
 	t.Cleanup(func() { newAPIClient = orig })
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err = fn(context.Background(), "test", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create Google Drive client")
@@ -558,7 +559,7 @@ func TestBuildSearchFn_SuccessPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// The closure creates a real Drive client. The search call will fail
 	// because there's no real API, but all lines in buildSearchFn are exercised.
 	_, err = fn(context.Background(), "test", nil)
@@ -964,7 +965,7 @@ func TestBuildSearchFn_GmailClientError_FallsBackToDriveOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { newGmailAPIClient = orig })
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// Should still work (falls back to Drive only), though Drive search will fail
 	// because there's no real API. The point is it didn't crash from Gmail error.
 	_, err = fn(context.Background(), "test", nil)
@@ -984,7 +985,7 @@ func TestBuildSearchFn_ObsidianConnectorRegistered_WhenFolderIDSet(t *testing.T)
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// The closure creates real clients. The search call will fail because
 	// there's no real API, but the obsidian connector path is exercised.
 	_, err = fn(context.Background(), "test", nil)
@@ -1010,7 +1011,7 @@ func TestBuildSearchFn_ObsidianClientError_FallsBackGracefully(t *testing.T) {
 	}
 	t.Cleanup(func() { newObsidianClient = orig })
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// Should still work without obsidian — falls back to Drive + Gmail.
 	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err) // will fail on API call, but didn't crash from obsidian error
@@ -1029,7 +1030,7 @@ func TestBuildSearchFn_ObsidianSkipped_WhenFolderIDEmpty(t *testing.T) {
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err) // API error, but obsidian path is skipped
 }
@@ -1047,7 +1048,7 @@ func TestBuildSearchFn_NotionConnectorRegistered_WhenTokenSet(t *testing.T) {
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// The closure creates real clients. The search call will fail because
 	// there's no real API, but the notion connector path is exercised.
 	_, err = fn(context.Background(), "test", nil)
@@ -1067,7 +1068,7 @@ func TestBuildSearchFn_NotionSkipped_WhenTokenEmpty(t *testing.T) {
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	_, err = fn(context.Background(), "test", nil)
 	assert.Error(t, err) // API error, but notion path is skipped
 }
@@ -1091,7 +1092,7 @@ func TestBuildSearchFn_ClaudeConnectorRegistered_WhenExportExists(t *testing.T) 
 	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
 	t.Setenv("PKB_TOKEN_PATH", tokenPath)
 
-	fn := buildSearchFn()
+	fn, _ := buildSearchFn()
 	// Search with sources=claude to only hit Claude connector
 	results, err := fn(context.Background(), "hello", []string{"claude"})
 	require.NoError(t, err)
@@ -1100,11 +1101,104 @@ func TestBuildSearchFn_ClaudeConnectorRegistered_WhenExportExists(t *testing.T) 
 	assert.Contains(t, results[0].Title, "Test Chat")
 }
 
+// --- Step 4: buildSearchFn returns token checker ---
+
+func TestBuildSearchFn_ReturnsTokenChecker_WhenTokenValid(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token.json")
+	data, err := json.Marshal(&oauth2.Token{AccessToken: "test", TokenType: "Bearer"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tokenPath, data, 0600))
+	t.Setenv("PKB_TOKEN_PATH", tokenPath)
+
+	_, tc := buildSearchFn()
+	require.NotNil(t, tc, "buildSearchFn should return a non-nil TokenChecker when token is valid")
+
+	status := tc.TokenHealth()
+	assert.True(t, status.Valid)
+}
+
+func TestBuildSearchFn_ReturnsNilChecker_WhenCredentialsMissing(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "")
+
+	_, tc := buildSearchFn()
+	assert.Nil(t, tc, "buildSearchFn should return nil TokenChecker when credentials are missing")
+}
+
+func TestBuildSearchFn_ReturnsNilChecker_WhenTokenMissing(t *testing.T) {
+	t.Setenv("PKB_GOOGLE_CLIENT_ID", "test-id")
+	t.Setenv("PKB_GOOGLE_CLIENT_SECRET", "test-secret")
+	t.Setenv("PKB_TOKEN_PATH", "/nonexistent/token.json")
+
+	_, tc := buildSearchFn()
+	assert.Nil(t, tc, "buildSearchFn should return nil TokenChecker when token file is missing")
+}
+
+func TestServeCommand_WiresTokenChecker(t *testing.T) {
+	testCh := make(chan os.Signal, 1)
+	origMakeSignalCh := makeSignalCh
+	makeSignalCh = func() (chan os.Signal, func()) {
+		return testCh, func() {}
+	}
+	t.Cleanup(func() { makeSignalCh = origMakeSignalCh })
+
+	// Create a mock token checker that reports valid token.
+	mockTC := &mockServerTokenChecker{valid: true, expiresIn: 45 * time.Minute}
+
+	buf := &syncBuffer{}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithOutput([]string{"serve", "--addr", ":0"}, noopSearch, buf, mockTC)
+	}()
+
+	addr := waitForServe(t, buf, errCh)
+
+	// The health endpoint should include token status.
+	resp, err := http.Get("http://" + addr + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var health map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&health))
+	assert.Equal(t, "ok", health["status"])
+	require.NotNil(t, health["token"])
+
+	tokenMap := health["token"].(map[string]interface{})
+	assert.True(t, tokenMap["valid"].(bool))
+
+	testCh <- syscall.SIGINT
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+// mockServerTokenChecker implements server.TokenChecker for testing.
+type mockServerTokenChecker struct {
+	valid     bool
+	expiresIn time.Duration
+	err       string
+}
+
+func (m *mockServerTokenChecker) TokenHealth() server.TokenStatus {
+	return server.TokenStatus{
+		Valid:     m.valid,
+		ExpiresIn: m.expiresIn,
+		Error:     m.err,
+	}
+}
+
 // --- auth command tests ---
 
 func TestAuthCommand_IsRegistered(t *testing.T) {
 	var buf bytes.Buffer
-	cmd := newRootCmd(noopSearch, &buf)
+	cmd := newRootCmd(noopSearch, &buf, nil)
 	authCmd, _, err := cmd.Find([]string{"auth"})
 	require.NoError(t, err)
 	assert.Equal(t, "auth", authCmd.Name())
@@ -1147,7 +1241,7 @@ func TestAuthCommand_FlowError(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runWithOutputCtx(ctx, []string{"auth"}, noopSearch, &buf)
+	err := runWithOutputCtx(ctx, []string{"auth"}, noopSearch, &buf, nil)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "Opening browser")
 	assert.Contains(t, buf.String(), "Open this URL")

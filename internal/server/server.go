@@ -12,11 +12,37 @@ import (
 // Version is set by the caller before creating a server. Defaults to "dev".
 var Version = "dev"
 
+// TokenChecker reports the health of an authentication token.
+type TokenChecker interface {
+	TokenHealth() TokenStatus
+}
+
+// TokenStatus describes whether a token is valid.
+type TokenStatus struct {
+	Valid     bool          `json:"valid"`
+	ExpiresIn time.Duration `json:"-"`
+	Error     string        `json:"error,omitempty"`
+}
+
+type healthResponse struct {
+	Status  string       `json:"status"`
+	Version string       `json:"version"`
+	Uptime  string       `json:"uptime"`
+	Token   *tokenHealth `json:"token,omitempty"`
+}
+
+type tokenHealth struct {
+	Valid     bool   `json:"valid"`
+	ExpiresIn string `json:"expires_in,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type Server struct {
-	httpServer *http.Server
-	listener   net.Listener
-	mux        *http.ServeMux
-	startTime  time.Time
+	httpServer   *http.Server
+	listener     net.Listener
+	mux          *http.ServeMux
+	startTime    time.Time
+	tokenChecker TokenChecker
 }
 
 func New(addr string) *Server {
@@ -35,13 +61,34 @@ func New(addr string) *Server {
 	return s
 }
 
+// SetTokenChecker sets an optional TokenChecker whose status is included in
+// the /health response. Pass nil to clear.
+func (s *Server) SetTokenChecker(tc TokenChecker) {
+	s.tokenChecker = tc
+}
+
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(s.startTime).Truncate(time.Second).String()
-	resp := map[string]string{
-		"status":  "ok",
-		"version": Version,
-		"uptime":  uptime,
+	resp := healthResponse{
+		Status:  "ok",
+		Version: Version,
+		Uptime:  uptime,
 	}
+
+	if s.tokenChecker != nil {
+		ts := s.tokenChecker.TokenHealth()
+		th := &tokenHealth{
+			Valid: ts.Valid,
+		}
+		if ts.Valid {
+			th.ExpiresIn = ts.ExpiresIn.String()
+		} else {
+			resp.Status = "degraded"
+			th.Error = ts.Error
+		}
+		resp.Token = th
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

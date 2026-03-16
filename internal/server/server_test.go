@@ -73,6 +73,103 @@ func TestServer_StartsAndStops(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// mockTokenChecker implements TokenChecker for testing.
+type mockTokenChecker struct {
+	valid     bool
+	expiresIn time.Duration
+	err       string
+}
+
+func (m *mockTokenChecker) TokenHealth() TokenStatus {
+	return TokenStatus{
+		Valid:     m.valid,
+		ExpiresIn: m.expiresIn,
+		Error:     m.err,
+	}
+}
+
+func TestHealth_WithoutTokenChecker_ReturnsOK(t *testing.T) {
+	s := New(":0")
+	require.NoError(t, s.Listen())
+	go func() { _ = s.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	})
+
+	resp, err := http.Get("http://" + s.Addr() + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var health healthResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&health))
+	assert.Equal(t, "ok", health.Status)
+	assert.NotEmpty(t, health.Version)
+	assert.NotEmpty(t, health.Uptime)
+	assert.Nil(t, health.Token, "token field must be absent when no TokenChecker is set")
+}
+
+func TestHealth_WithValidToken_ReturnsOKWithToken(t *testing.T) {
+	s := New(":0")
+	s.SetTokenChecker(&mockTokenChecker{
+		valid:     true,
+		expiresIn: 45 * time.Minute,
+	})
+	require.NoError(t, s.Listen())
+	go func() { _ = s.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	})
+
+	resp, err := http.Get("http://" + s.Addr() + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var health healthResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&health))
+	assert.Equal(t, "ok", health.Status)
+	require.NotNil(t, health.Token)
+	assert.True(t, health.Token.Valid)
+	assert.Equal(t, "45m0s", health.Token.ExpiresIn)
+	assert.Empty(t, health.Token.Error)
+}
+
+func TestHealth_WithInvalidToken_ReturnsDegradedWithError(t *testing.T) {
+	s := New(":0")
+	s.SetTokenChecker(&mockTokenChecker{
+		valid: false,
+		err:   "token expired",
+	})
+	require.NoError(t, s.Listen())
+	go func() { _ = s.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	})
+
+	resp, err := http.Get("http://" + s.Addr() + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var health healthResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&health))
+	assert.Equal(t, "degraded", health.Status)
+	require.NotNil(t, health.Token)
+	assert.False(t, health.Token.Valid)
+	assert.Equal(t, "token expired", health.Token.Error)
+	assert.Empty(t, health.Token.ExpiresIn)
+}
+
+func TestSetTokenChecker_AcceptsNil(t *testing.T) {
+	s := New(":0")
+	s.SetTokenChecker(nil) // should not panic
+	assert.Nil(t, s.tokenChecker)
+}
+
 func TestServer_Handle_RegistersRoute(t *testing.T) {
 	s := New(":0")
 

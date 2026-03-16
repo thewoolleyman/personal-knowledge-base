@@ -202,7 +202,7 @@ var startEmbeddedServer = func(searchFn SearchFunc) (*apiclient.Client, func(), 
 	return client, cleanup, nil
 }
 
-func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
+func newRootCmd(searchFn SearchFunc, out io.Writer, tc server.TokenChecker) *cobra.Command {
 	server.Version = version
 
 	root := &cobra.Command{
@@ -272,6 +272,10 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 			srv.Handle("GET /search", searchHandler(searchFn))
 			srv.Handle("POST /import-claude", importClaudeHandler())
 			srv.Handle("GET /", pkbweb.Handler())
+
+			if tc != nil {
+				srv.SetTokenChecker(tc)
+			}
 
 			if err := srv.Listen(); err != nil {
 				return err
@@ -387,12 +391,16 @@ func newRootCmd(searchFn SearchFunc, out io.Writer) *cobra.Command {
 	return root
 }
 
-func runWithOutput(args []string, searchFn SearchFunc, out io.Writer) error {
-	return runWithOutputCtx(context.Background(), args, searchFn, out)
+func runWithOutput(args []string, searchFn SearchFunc, out io.Writer, opts ...server.TokenChecker) error {
+	var tc server.TokenChecker
+	if len(opts) > 0 {
+		tc = opts[0]
+	}
+	return runWithOutputCtx(context.Background(), args, searchFn, out, tc)
 }
 
-func runWithOutputCtx(ctx context.Context, args []string, searchFn SearchFunc, out io.Writer) error {
-	cmd := newRootCmd(searchFn, out)
+func runWithOutputCtx(ctx context.Context, args []string, searchFn SearchFunc, out io.Writer, tc server.TokenChecker) error {
+	cmd := newRootCmd(searchFn, out, tc)
 	cmd.SetArgs(args)
 	cmd.SetOut(out)
 	cmd.SetErr(out)
@@ -400,16 +408,30 @@ func runWithOutputCtx(ctx context.Context, args []string, searchFn SearchFunc, o
 	return cmd.ExecuteContext(ctx)
 }
 
-func run(args []string, searchFn SearchFunc) error {
-	return runWithOutput(args, searchFn, os.Stdout)
+func run(args []string, searchFn SearchFunc, tc server.TokenChecker) error {
+	return runWithOutput(args, searchFn, os.Stdout, tc)
 }
 
-func buildSearchFn() SearchFunc {
+// tokenCheckerAdapter adapts gdrive.PersistingTokenSource to server.TokenChecker.
+type tokenCheckerAdapter struct {
+	pts *gdrive.PersistingTokenSource
+}
+
+func (a *tokenCheckerAdapter) TokenHealth() server.TokenStatus {
+	gs := a.pts.TokenHealth()
+	return server.TokenStatus{
+		Valid:     gs.Valid,
+		ExpiresIn: gs.ExpiresIn,
+		Error:     gs.Error,
+	}
+}
+
+func buildSearchFn() (SearchFunc, server.TokenChecker) {
 	appCfg, err := loadConfig()
 	if err != nil {
 		return func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
-		}
+		}, nil
 	}
 
 	if appCfg.GoogleClientID == "" || appCfg.GoogleClientSecret == "" {
@@ -419,28 +441,34 @@ func buildSearchFn() SearchFunc {
 				"  export PKB_GOOGLE_CLIENT_ID=\"your-client-id\"\n" +
 				"  export PKB_GOOGLE_CLIENT_SECRET=\"your-client-secret\"\n\n" +
 				"See README.md for setup instructions.")
-		}
+		}, nil
 	}
 
-	return func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
-		oauthCfg := &oauth2.Config{
-			ClientID:     appCfg.GoogleClientID,
-			ClientSecret: appCfg.GoogleClientSecret,
-			Scopes:       []string{drive.DriveReadonlyScope, gm.GmailReadonlyScope},
-			Endpoint:     google.Endpoint,
-		}
-
-		tok, err := gdrive.LoadToken(appCfg.TokenPath)
-		if err != nil {
+	// Load token ONCE at startup — not per request.
+	tok, loadErr := gdrive.LoadToken(appCfg.TokenPath)
+	if loadErr != nil {
+		return func(_ context.Context, _ string, _ []string) ([]connectors.Result, error) {
 			return nil, fmt.Errorf("failed to load OAuth token from %s: %w\n\n"+
-				"You may need to complete the OAuth flow first.", appCfg.TokenPath, err)
-		}
+				"You may need to complete the OAuth flow first.", appCfg.TokenPath, loadErr)
+		}, nil
+	}
 
-		// Wrap in a PersistingTokenSource so refreshed tokens are saved to disk.
-		tokenSource := gdrive.NewPersistingTokenSource(
-			oauthCfg.TokenSource(ctx, tok), appCfg.TokenPath, tok,
-		)
+	oauthCfg := &oauth2.Config{
+		ClientID:     appCfg.GoogleClientID,
+		ClientSecret: appCfg.GoogleClientSecret,
+		Scopes:       []string{drive.DriveReadonlyScope, gm.GmailReadonlyScope},
+		Endpoint:     google.Endpoint,
+	}
 
+	// Create token source ONCE — reused across all requests.
+	// This preserves the oauth2 library's in-memory token cache.
+	tokenSource := gdrive.NewPersistingTokenSource(
+		oauthCfg.TokenSource(context.Background(), tok), appCfg.TokenPath, tok,
+	)
+
+	checker := &tokenCheckerAdapter{pts: tokenSource}
+
+	return func(ctx context.Context, query string, sources []string) ([]connectors.Result, error) {
 		client, err := newAPIClient(ctx, tokenSource)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Google Drive client: %w", err)
@@ -480,7 +508,7 @@ func buildSearchFn() SearchFunc {
 
 		engine := search.New(allConnectors...)
 		return engine.SearchWithSources(ctx, query, sources)
-	}
+	}, checker
 }
 
 func serveLoop(srv httpServer, out io.Writer) error {
@@ -508,7 +536,8 @@ func serveLoop(srv httpServer, out io.Writer) error {
 }
 
 func main() {
-	if err := run(os.Args[1:], buildSearchFn()); err != nil {
+	searchFn, tokenChecker := buildSearchFn()
+	if err := run(os.Args[1:], searchFn, tokenChecker); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
