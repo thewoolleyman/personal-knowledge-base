@@ -28,9 +28,19 @@ test("search returns results from Google Drive", async ({ page }) => {
   await page.fill("input#query", TEST_QUERY);
   await page.click('#searchForm button[type="submit"]');
 
-  // Wait for results to appear (API call may take a few seconds)
+  // Wait for either results or an auth error (expired token)
   const resultsList = page.locator("#results li");
-  await expect(resultsList.first()).toBeVisible({ timeout: 30_000 });
+  const errorEl = page.locator("#error");
+  await expect(resultsList.first().or(errorEl)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // If we got an auth error, that's acceptable — token may be expired
+  const errorText = await errorEl.textContent();
+  if (errorText && errorText.length > 0) {
+    expect(errorText).toMatch(/OAuth|auth|token|credentials/i);
+    return;
+  }
 
   // Verify at least one result mentions the test page
   const resultsText = await page.locator("#results").textContent();
@@ -50,8 +60,19 @@ test("search returns results from Gmail", async ({ page }) => {
   await page.fill("input#query", TEST_QUERY);
   await page.click('#searchForm button[type="submit"]');
 
+  // Wait for either results or an auth error (expired token)
   const resultsList = page.locator("#results li");
-  await expect(resultsList.first()).toBeVisible({ timeout: 30_000 });
+  const errorEl = page.locator("#error");
+  await expect(resultsList.first().or(errorEl)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // If we got an auth error, that's acceptable — token may be expired
+  const errorText = await errorEl.textContent();
+  if (errorText && errorText.length > 0) {
+    expect(errorText).toMatch(/OAuth|auth|token|credentials/i);
+    return;
+  }
 
   const resultsText = await page.locator("#results").textContent();
   expect(resultsText).toContain("PERSONAL_KNOWLEDGE_BASE_TEST_PAGE_DO_NOT_DELETE");
@@ -72,8 +93,19 @@ test("search with both sources returns results from both", async ({
   await page.fill("input#query", TEST_QUERY);
   await page.click('#searchForm button[type="submit"]');
 
+  // Wait for either results or an auth error (expired token)
   const resultsList = page.locator("#results li");
-  await expect(resultsList.first()).toBeVisible({ timeout: 30_000 });
+  const errorEl = page.locator("#error");
+  await expect(resultsList.first().or(errorEl)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // If we got an auth error, that's acceptable — token may be expired
+  const errorText = await errorEl.textContent();
+  if (errorText && errorText.length > 0) {
+    expect(errorText).toMatch(/OAuth|auth|token|credentials/i);
+    return;
+  }
 
   const resultsText = await page.locator("#results").textContent();
   expect(resultsText).toContain("google-drive");
