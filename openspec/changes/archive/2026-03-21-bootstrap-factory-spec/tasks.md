@@ -35,5 +35,5 @@
 ## 6. Verify and commit
 
 - [x] 6.1 Run `npx openspec status --change bootstrap-factory-spec` to confirm all artifacts complete
-- [ ] 6.2 Commit all changes
-- [ ] 6.3 Push and verify CI
+- [x] 6.2 Commit all changes
+- [x] 6.3 Push and verify CI
