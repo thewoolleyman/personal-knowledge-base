@@ -1,8 +1,6 @@
 {
   "editorMode": "normal",
-  "enabledPlugins": {
-    "beads@beads-marketplace": false
-  },
+  "enabledPlugins": {},
   "hooks": {},
   "permissions": {
     "allow": [],

@@ -9,7 +9,7 @@ title = "pkb gitleaks config"
 [allowlist]
   description = "Global allowlist"
 
-  # Commits to ignore: CI bead testing commits with deliberate fake secrets
+  # Commits to ignore: legacy CI testing commits with deliberate fake secrets
   commits = [
     "0f1135b583c85ba9b55d1d6a4970d6f83ee63021",
     "5eca8dde6653b2e0709d9956a60e58e4742378da",
@@ -19,14 +19,9 @@ title = "pkb gitleaks config"
   # fake credentials in documentation), and test files.
   paths = [
     # Gitignored directories (never committed)
-    '''\.claude-flow/learning/''',
-    '''\.claude-flow/daemon\.log''',
-    '''\.claude-flow/daemon\.pid''',
-    '''\.swarm/''',
     '''data/''',
     '''cache/''',
     '''tmp/''',
-    '''\.bv/''',
     '''token\.json''',
     '''\.env$''',
     # Example / placeholder files
@@ -35,7 +30,6 @@ title = "pkb gitleaks config"
     '''_test\.go$''',
     # Docs and formula templates (contain placeholder credential examples)
     '''docs/''',
-    '''\.beads/formulas/''',
     # Agent definitions, commands, and skills (contain example credentials in docs)
     '''\.claude/agents/''',
     '''\.claude/commands/''',

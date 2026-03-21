@@ -203,8 +203,7 @@ If you see results from each configured connector, the integration is healthy.
 |--------|-------------|
 | `make scan-secrets` | Run gitleaks to detect hardcoded secrets in the repo |
 | `make scan-secrets-staged` | Run gitleaks on staged files only (same check as pre-commit hook) |
-| `make setup-hooks` | Install the pre-commit hook (gitleaks + beads export) |
-| `make verify-hooks` | Verify two-tier logging, context bundles, and recall work end-to-end |
+| `make setup-hooks` | Install the pre-commit hook (gitleaks secret scanning) |
 
 #### Deployment
 

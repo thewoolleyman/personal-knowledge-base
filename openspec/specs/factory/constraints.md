@@ -62,7 +62,7 @@ Before closing ANY epic that adds or modifies user-facing functionality:
 2. Tests build real binary and execute as subprocess (black box)
 3. Tests NEVER import internal packages
 4. Tests mirror what README instructs users to do
-5. CI green, all child beads closed, documentation updated
+5. CI green, all child tasks complete, documentation updated
 
 ## Secrets and Credentials
 
@@ -93,7 +93,6 @@ CI must be green. This is non-negotiable:
 3. If CI fails after your push, fix it before starting new work
 4. NEVER use `git commit --no-verify` to skip pre-commit hooks
 5. All linting tools belong in the SINGLE ci-cd.yml pipeline
-6. The pipeline auto-creates a P0 bug bead on any unexpected failure on main
 
 ## Holdout Scenario Visibility
 

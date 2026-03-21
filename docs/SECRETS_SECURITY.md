@@ -1,7 +1,7 @@
 # Secrets Security for AI Agent Workflows
 
 How to prevent secrets from leaking into state files committed by AI agent
-tooling (Claude Code hooks, beads, claude-flow, or similar).
+tooling (Claude Code hooks or similar).
 
 ## The problem
 
@@ -11,13 +11,13 @@ tooling that makes agents useful also **logs what they do**:
 
 - **Hook logs** capture full tool input/output (including bash stdout/stderr)
 - **Context bundles** record commands the agent ran
-- **Issue trackers** (beads, Linear, Jira) store descriptions agents write
+- **Issue trackers** (Linear, Jira, etc.) store descriptions agents write
 - **Memory databases** persist patterns and learnings across sessions
 - **Metrics/state files** track operational data
 
 If the agent runs `printenv` or `echo $SECRET`, the secret value appears in
-the tool output, which gets logged. If the agent writes a secret into a bead
-description or memory store, it persists.
+the tool output, which gets logged. If the agent writes a secret into a
+tracked file or memory store, it persists.
 
 **You cannot prevent the agent from reading secrets** -- it needs them. The
 defense must be at the **output boundary**: redact before logging, scan before
@@ -55,47 +55,20 @@ No single layer is sufficient. Together they catch secrets at every exit point.
 
 ### Layer 1: Hook-level redaction
 
-**Files**: `.claude/hooks/log-hook-event.sh`, `.claude/hooks/build-context-bundle.sh`
-
-Both scripts run a sed pipeline before writing to disk:
-
-```bash
-INPUT="$(printf '%s' "$INPUT" | sed \
-  -e 's/sk-ant-[a-zA-Z0-9_-]\{10,\}/[REDACTED]/g' \
-  -e 's/sk-[a-zA-Z0-9]\{20,\}/[REDACTED]/g' \
-  -e 's/AKIA[0-9A-Z]\{16\}/[REDACTED]/g' \
-  -e 's/ghp_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
-  -e 's/gho_[a-zA-Z0-9]\{36\}/[REDACTED]/g' \
-  -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[REDACTED]/g' \
-  -e 's/Bearer [a-zA-Z0-9._-]\{20,\}/Bearer [REDACTED]/g' \
-  -e 's/ya29\.[a-zA-Z0-9._-]\{1,\}/[REDACTED]/g' \
-  -e 's/SECRET[=:][^ "\\]*/SECRET=[REDACTED]/g' \
-  -e 's/TOKEN[=:][^ "\\]*/TOKEN=[REDACTED]/g' \
-  -e 's/KEY[=:][^ "\\]*/KEY=[REDACTED]/g' \
-  -e 's/PASSWORD[=:][^ "\\]*/PASSWORD=[REDACTED]/g' \
-  -e 's/CREDENTIAL[=:][^ "\\]*/CREDENTIAL=[REDACTED]/g' \
-)"
-```
-
-Design constraints:
-- **POSIX BRE only** -- macOS BSD sed has no `\|` alternation or `I` flag.
-  Use separate `-e` for each pattern.
-- **Single invocation** -- one `sed` call with 13 `-e` flags, one process spawn.
-- **Best-effort** -- this is a defense layer, not the only one. Novel patterns
-  will slip through; that's what layers 2-4 catch.
-- **Env var keyword matching** -- `SECRET=`, `TOKEN=`, `KEY=`, `PASSWORD=`,
-  `CREDENTIAL=` catch `printenv`/`env` output where lines are `VAR_NAME=value`.
+If using Claude Code hooks that log tool output, add a sed redaction pipeline
+to strip known secret patterns before writing to disk. This is a best-effort
+defense layer — novel patterns will slip through, which is what layers 2-4 catch.
 
 ### Layer 2: Gitignore isolation
 
-**Files**: `.gitignore`, `.claude-flow/.gitignore`, `.claude-flow/learning/.gitignore`, `.beads/.gitignore`
+**Files**: `.gitignore`
 
 State files fall into two categories:
 
 | Category | Examples | Git status |
 |----------|----------|------------|
-| **Config/metadata** (safe to share) | `.beads/config.yaml`, `.claude-flow/config.yaml`, `.claude/settings.json` | Tracked |
-| **Runtime/learning** (machine-local) | Hook logs, context bundles, memory DBs, daemon PIDs | Gitignored |
+| **Config/metadata** (safe to share) | `.claude/settings.json`, `openspec/` | Tracked |
+| **Runtime/learning** (machine-local) | Memory DBs, daemon PIDs, tokens | Gitignored |
 
 Key gitignore entries:
 
@@ -106,32 +79,7 @@ token.json
 *.db
 *.db-shm
 *.db-wal
-.claude-flow/learning/hook_logs/
-.claude-flow/learning/context_bundles/
-
-# .claude-flow/.gitignore
-daemon-state.json
-daemon.pid
-data/
-logs/
-sessions/
-neural/
-*.log
-
-# .claude-flow/learning/.gitignore (defense-in-depth)
-*
-!.gitignore
-
-# .beads/.gitignore
-*.db*
-daemon.lock
-daemon.log
-daemon.pid
-sync-state.json
 ```
-
-The `.claude-flow/learning/.gitignore` with `*` is defense-in-depth -- even if
-someone removes the root gitignore entries, learning data stays untracked.
 
 ### Layer 3: Pre-commit scanning
 
@@ -147,16 +95,16 @@ gitleaks = "8.21"
 ```
 
 The pre-commit hook resolves gitleaks via mise first, falls back to PATH.
-It runs `gitleaks protect --staged` before delegating to `bd hook pre-commit`.
+It runs `gitleaks protect --staged` on all staged content.
 If gitleaks detects secrets, the commit is blocked.
 
-To install or reinstall the hook (e.g., after `bd init` overwrites it):
+To install or reinstall the hook:
 
 ```bash
 make setup-hooks
 ```
 
-This writes `.git/hooks/pre-commit` with the gitleaks + bd chain. The hook
+This writes `.git/hooks/pre-commit` with gitleaks scanning. The hook
 source of truth is the `setup-hooks` Makefile target -- `.git/hooks/` is not
 tracked by git.
 
@@ -197,37 +145,15 @@ is scanned. Test jobs will not run if secrets are detected.
 
 ## Tracked state files: complete inventory
 
-These are the files committed to git by beads and claude-flow tooling:
-
-### Beads (.beads/)
-
-| File | Content | Secret risk |
-|------|---------|-------------|
-| `issues.jsonl` | Issue titles, descriptions, close reasons | Medium -- agent may write secrets into descriptions |
-| `interactions.jsonl` | Interaction history | Medium -- same risk |
-| `config.yaml` | Issue prefix, daemon settings | None |
-| `metadata.json` | DB pointer | None |
-
-### Claude Flow (.claude-flow/)
-
-| File | Content | Secret risk |
-|------|---------|-------------|
-| `config.yaml` | Topology, memory backend config | None |
-| `pair-config.json` | TDD mode, coverage settings | None |
-| `metrics/learning.json` | Pattern counts, routing accuracy | None |
-| `metrics/swarm-activity.json` | Agent counts, swarm status | None |
-| `metrics/v3-progress.json` | Implementation progress | None |
-| `security/audit-status.json` | CVE counts, scan status | None |
-| `CAPABILITIES.md` | Generated reference doc | None |
+These are the files committed to git by project tooling:
 
 ### Claude Code (.claude/)
 
 | File | Content | Secret risk |
 |------|---------|-------------|
-| `settings.json` | Hook config, model preferences | Low -- no credentials |
-| `agents/**/*.md` | Agent definitions | None |
-| `commands/**/*.md` | Command docs | None |
-| `hooks/*.sh` | Hook scripts (code, not data) | None |
+| `settings.json` | Editor mode, plugin config | Low -- no credentials |
+| `commands/**/*.md` | Command/skill definitions | None |
+| `skills/**/*.md` | OpenSpec workflow skills | None |
 
 ### Other
 
@@ -253,8 +179,6 @@ These are the files committed to git by beads and claude-flow tooling:
    ```toml
    [allowlist]
      paths = [
-       '''\.claude-flow/learning/''',
-       '''\.swarm/''',
        # add your agent tooling's gitignored paths
      ]
    ```
@@ -271,8 +195,6 @@ These are the files committed to git by beads and claude-flow tooling:
    *.db
    *.db-wal
    *.db-shm
-   .claude-flow/learning/
-   .swarm/
    ```
 
 ### Adding hook-level redaction (Claude Code specific)
@@ -284,16 +206,6 @@ The pipeline from this repo (13 patterns, single sed invocation) can be copied
 directly. Adapt the patterns for your secret types.
 
 Key file to modify: whatever script handles your `PostToolUse` hook event.
-
-### Beads-specific considerations
-
-Beads tracks `issues.jsonl` in git by design (for cross-machine sync). This
-means bead descriptions are committed. Mitigations:
-
-- The pre-commit gitleaks scan catches secrets in `issues.jsonl`
-- Agent instructions (CLAUDE.md or similar) should discourage writing secrets
-  into bead descriptions, but this is not enforceable
-- The gitleaks CI scan is the ultimate backstop
 
 ### For other agent state managers
 
@@ -308,10 +220,9 @@ The same principles apply to any tool that persists agent state to git:
 ## Make targets
 
 ```bash
-make setup-hooks          # Install pre-commit hook (gitleaks + bd chain)
+make setup-hooks          # Install pre-commit hook (gitleaks scanning)
 make scan-secrets         # Run gitleaks detect on the full repo
 make scan-secrets-staged  # Run gitleaks on staged files only
-make verify-hooks         # Verify hook logging, bundles, and recall work
 ```
 
 ## Limitations
@@ -319,7 +230,7 @@ make verify-hooks         # Verify hook logging, bundles, and recall work
 - **Redaction is pattern-based** -- novel secret formats will pass through.
   The gitleaks rules and sed patterns need periodic updates.
 - **Agent behavior is not controllable** -- the agent may store secrets in
-  bead descriptions, memory, or other tracked files. Scanning catches this
+  tracked files. Scanning catches this
   after the fact, not before.
 - **Pre-commit hooks can be skipped** -- `git commit --no-verify` bypasses
   them. CI is the backstop.
