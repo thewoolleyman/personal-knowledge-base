@@ -1,0 +1,172 @@
+name: software-factory
+version: 1
+description: Software Factory pattern — proposal → specs → holdout-scenarios + design → tasks
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      Create the proposal document that establishes WHY this change is needed.
+
+      Sections:
+      - **Why**: 1-2 sentences on the problem or opportunity. What problem does this solve? Why now?
+      - **What Changes**: Bullet list of changes. Be specific about new capabilities, modifications, or removals. Mark breaking changes with **BREAKING**.
+      - **Capabilities**: Identify which specs will be created or modified:
+        - **New Capabilities**: List capabilities being introduced. Each becomes a new capability directory under `specs/<name>/` with intent.md, contracts.md, and/or constraints.md files. Use kebab-case names (e.g., `user-auth`, `data-export`).
+        - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs delta spec files. Check `openspec/specs/` for existing capability names. Leave empty if no requirement changes.
+      - **Impact**: Affected code, APIs, dependencies, or systems.
+
+      IMPORTANT: The Capabilities section is critical. It creates the contract between
+      proposal and specs phases. Research existing specs before filling this in.
+      Each capability listed here will need corresponding spec files.
+
+      Keep it concise (1-2 pages). Focus on the "why" not the "how" -
+      implementation details belong in design.md.
+
+      This is the foundation - specs, design, and tasks all build on this.
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Detailed specifications organized as intent, contracts, and constraints per capability
+    template: spec.md
+    instruction: |
+      Create specification files that define WHAT the system should do.
+
+      This project uses the Software Factory pattern. Each capability gets its own
+      directory under specs/<capability>/ with up to three files:
+
+      - **intent.md** — Purpose, domain model, behavioral narratives, key decisions.
+        Describes what the capability accomplishes and why, not how.
+      - **contracts.md** — API boundaries, input/output shapes, protocol definitions.
+        Upstream and downstream interfaces, precise enough to implement without ambiguity.
+      - **constraints.md** — Non-negotiable invariants: SLOs, security requirements,
+        operational limits. Hard boundaries, not suggestions.
+
+      Not every capability requires all three files. Create only what is relevant.
+
+      Create one capability directory per capability listed in the proposal's
+      Capabilities section.
+      - New capabilities: use the exact kebab-case name from the proposal.
+      - Modified capabilities: use the existing capability folder name from
+        openspec/specs/<capability>/.
+
+      Delta operations (use ## headers within each file):
+      - **ADDED Requirements**: New capabilities
+      - **MODIFIED Requirements**: Changed behavior - MUST include full updated content
+      - **REMOVED Requirements**: Deprecated features - MUST include **Reason** and **Migration**
+      - **RENAMED Requirements**: Name changes only - use FROM:/TO: format
+
+      Format requirements:
+      - Each requirement: `### Requirement: <name>` followed by description
+      - Use SHALL/MUST for normative requirements (avoid should/may)
+      - Each scenario: `#### Scenario: <name>` with WHEN/THEN format
+      - **CRITICAL**: Scenarios MUST use exactly 4 hashtags (`####`). Using 3 hashtags or bullets will fail silently.
+      - Every requirement MUST have at least one scenario.
+
+      Specs should be testable - each scenario is a potential test case.
+    requires:
+      - proposal
+
+  - id: holdout-scenarios
+    generates: "holdout-scenarios/**/*.md"
+    description: Validation scenarios invisible to implementation agents
+    template: holdout-scenario.md
+    instruction: |
+      Create holdout scenarios that verify the specs are correctly implemented.
+
+      Holdout scenarios are WHEN/THEN assertions — the same format as spec scenarios
+      but stored separately. During implementation (/opsx:apply), the implementing
+      agent MUST NOT reference these scenarios. They function as a holdout set,
+      preventing the implementation from being optimized specifically for visible tests.
+
+      Organize scenarios by capability, mirroring the specs structure:
+      - holdout-scenarios/<capability>/scenarios.md
+
+      Each scenario:
+      - References a specific requirement from the specs
+      - Uses WHEN/THEN format
+      - Tests behavior that the spec requires but from a different angle or edge case
+      - Is independently verifiable against the running system
+
+      Focus on:
+      - Edge cases not explicitly covered by spec scenarios
+      - Integration boundaries between capabilities
+      - Failure modes and error handling
+      - Real-world usage patterns
+
+      These scenarios will be archived to holdout-scenarios/ at the repo root
+      when the change is archived.
+    requires:
+      - specs
+
+  - id: design
+    generates: design.md
+    description: Technical design document with implementation details
+    template: design.md
+    instruction: |
+      Create the design document that explains HOW to implement the change.
+
+      When to include design.md (create only if any apply):
+      - Cross-cutting change (multiple services/modules) or new architectural pattern
+      - New external dependency or significant data model changes
+      - Security, performance, or migration complexity
+      - Ambiguity that benefits from technical decisions before coding
+
+      Sections:
+      - **Context**: Background, current state, constraints, stakeholders
+      - **Goals / Non-Goals**: What this design achieves and explicitly excludes
+      - **Decisions**: Key technical choices with rationale (why X over Y?). Include alternatives considered for each decision.
+      - **Risks / Trade-offs**: Known limitations, things that could go wrong. Format: [Risk] → Mitigation
+      - **Migration Plan**: Steps to deploy, rollback strategy (if applicable)
+      - **Open Questions**: Outstanding decisions or unknowns to resolve
+
+      Focus on architecture and approach, not line-by-line implementation.
+      Reference the proposal for motivation and specs for requirements.
+
+      Good design docs explain the "why" behind technical decisions.
+    requires:
+      - proposal
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Create the task list that breaks down the implementation work.
+
+      **IMPORTANT: Follow the template below exactly.** The apply phase parses
+      checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+      Guidelines:
+      - Group related tasks under ## numbered headings
+      - Each task MUST be a checkbox: `- [ ] X.Y Task description`
+      - Tasks should be small enough to complete in one session
+      - Order tasks by dependency (what must be done first?)
+
+      Example:
+      ```
+      ## 1. Setup
+
+      - [ ] 1.1 Create new module structure
+      - [ ] 1.2 Add dependencies to package.json
+
+      ## 2. Core Implementation
+
+      - [ ] 2.1 Implement data export function
+      - [ ] 2.2 Add CSV formatting utilities
+      ```
+
+      Reference specs for what needs to be built, design for how to build it.
+      Each task should be verifiable - you know when it's done.
+    requires:
+      - specs
+      - design
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.
+    IMPORTANT: Do NOT read or reference holdout-scenarios during implementation.
