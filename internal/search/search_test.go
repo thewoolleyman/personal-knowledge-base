@@ -163,6 +163,25 @@ func TestEngine_SearchWithSources_UnknownSourceIgnored(t *testing.T) {
 	assert.Empty(t, results)
 }
 
+func TestEngine_Search_AllFail_InvalidGrant_ShowsReauthHint(t *testing.T) {
+	mock1 := new(MockConnector)
+	mock1.On("Search", mock.Anything, "q").Return(
+		[]connectors.Result(nil),
+		errors.New(`drive files.list: Get "https://...": auth: cannot fetch token: 400
+Response: {
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}`))
+	mock1.On("Name").Return("google-drive")
+
+	engine := New(mock1)
+	_, err := engine.Search(context.Background(), "q")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OAuth token expired")
+	assert.Contains(t, err.Error(), "pkb auth")
+}
+
 func TestEngine_ConnectorNames(t *testing.T) {
 	drive := new(MockConnector)
 	drive.On("Name").Return("google-drive")

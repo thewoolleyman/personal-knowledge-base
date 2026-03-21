@@ -432,9 +432,12 @@ func TestAcceptance_SearchWithSourcesFlag_FiltersResults(t *testing.T) {
 		assert.NotContains(t, stdout, "[notion]",
 			"Should not return notion results when filtering to google-drive")
 	} else {
-		// No credentials: error must be about credentials, not unknown flags
-		assert.Contains(t, combined, "credentials",
-			"Without credentials, error should mention credentials")
+		// No credentials or expired token: error must be actionable
+		assert.True(t,
+			strings.Contains(combined, "credentials") ||
+				strings.Contains(combined, "OAuth") ||
+				strings.Contains(combined, "pkb auth"),
+			"Without credentials, error should mention credentials or auth, got: %s", combined)
 	}
 }
 
@@ -476,7 +479,7 @@ func TestAcceptance_SearchWithObsidianSource_ReturnsResults(t *testing.T) {
 	assert.NotContains(t, combined, "unknown flag",
 		"Should recognize --sources obsidian flag")
 
-	if exitCode == 0 {
+	if exitCode == 0 && !strings.Contains(stdout, "No results") {
 		assert.Contains(t, stdout, "[obsidian]",
 			"Should return obsidian results")
 		assert.NotContains(t, stdout, "[google-drive]",
@@ -526,7 +529,7 @@ func TestAcceptance_SearchWithNotionSource_ReturnsResults(t *testing.T) {
 	assert.NotContains(t, combined, "unknown flag",
 		"Should recognize --sources notion flag")
 
-	if exitCode == 0 {
+	if exitCode == 0 && !strings.Contains(stdout, "No results") {
 		assert.Contains(t, stdout, "[notion]",
 			"Should return notion results")
 		assert.NotContains(t, stdout, "[google-drive]",

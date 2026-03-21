@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cwoolley/personal-knowledge-base/internal/connectors"
@@ -59,7 +60,11 @@ func (e *Engine) Search(ctx context.Context, query string) ([]connectors.Result,
 	}
 
 	if len(errs) == len(e.connectors) {
-		return nil, fmt.Errorf("all connectors failed: %v", errs)
+		combined := fmt.Sprintf("all connectors failed: %v", errs)
+		if strings.Contains(combined, "invalid_grant") {
+			return nil, fmt.Errorf("OAuth token expired or revoked. Run 'pkb auth' to re-authenticate.\n\n%s", combined)
+		}
+		return nil, fmt.Errorf("%s", combined)
 	}
 
 	return all, nil
