@@ -1,0 +1,346 @@
+digraph pkb_pipeline {
+  graph [
+    config_sha256="fb19dcab6d4cbad6044c2d36a51deb0d071201e925980d42c9c84f31d1f9f19b",
+    goal="a Go CLI application (pkb) that provides unified search across personal knowledge sources (Obsidian, Google Drive, Gmail, Notion) with OAuth authentication, a TUI, web UI, and HTTP API — per all files under openspec/specs/ (intent, contracts, and constraints)",
+    rankdir=LR,
+    default_max_retry=3,
+    retry_target="implement",
+    fallback_retry_target="postmortem",
+    model_stylesheet="
+* { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }
+.hard { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }
+.verify { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }
+    "
+  ]
+
+  start [shape=Mdiamond]
+  exit [shape=Msquare]
+  implement [shape=box, class="hard", prompt="# PKB Implementation
+
+You are implementing the PKB (Personal Knowledge Base) application per the specifications at `openspec/specs/`.
+
+## Critical: Check for Repair Iteration
+
+Before doing anything else, check for these files:
+- `.ai/postmortem_latest.md` — If present, this is a **repair iteration**. Read the postmortem first and address its findings before making other changes. The postmortem contains the root cause analysis and specific repair guidance from the previous failed iteration.
+- `.ai/unimplemented_specifications.md` — If present, lists specifications that were not yet implemented. Prioritize these.
+
+If neither file exists, this is a fresh implementation. Proceed with the full specification.
+
+## Read the Specification
+
+Read ALL files under `openspec/specs/` to understand what to build:
+- `openspec/specs/*/intent.md` — What each capability does and why
+- `openspec/specs/*/contracts.md` — API boundaries and interface definitions
+- `openspec/specs/*/constraints.md` — Non-negotiable invariants
+
+The factory constraints at `openspec/specs/factory/constraints.md` define the development process you MUST follow.
+
+## Project Architecture
+
+PKB is a Go CLI application:
+
+```
+cmd/pkb/main.go          — CLI entry point (thin wrapper: main() calls run())
+internal/
+  auth/                   — OAuth flow (Google OAuth, token storage in XDG config)
+  config/                 — Configuration loading (XDG paths, env vars)
+  connectors/             — Source adapters:
+    gdrive/               — Google Drive search
+    gmail/                — Gmail search
+    notion/               — Notion search
+    obsidian/             — Obsidian vault search (via Google Drive)
+    claude/               — Claude connector
+  search/                 — Unified search engine across connectors
+  server/                 — HTTP server (REST API, health endpoint)
+  tui/                    — Terminal UI (bubbletea interactive search)
+  web/                    — Web UI (embedded HTML/JS/CSS)
+  apiclient/              — HTTP client for API calls
+  tailscale/              — Tailscale integration for remote access
+tests/
+  acceptance/             — Black-box tests (build real binary, test as user)
+  live/                   — Live API tests (requires credentials)
+  e2e/                    — Playwright E2E tests (web UI)
+```
+
+## Development Process (Non-Negotiable)
+
+1. **TDD**: Write a failing test FIRST (RED), minimum code to pass (GREEN), refactor (REFACTOR)
+2. **Testing pyramid**: Unit tests (many, fast) → Acceptance tests (fewer, black-box)
+3. **100% line coverage** on new code
+4. **main() is thin**: It calls `run() error` — test `run()`, not `main()`
+5. **No log.Fatal() or os.Exit()** outside main() — return errors
+6. **All external interaction behind interfaces** — mock in tests
+7. **Table-driven tests** for multiple cases
+8. **Tests in same package** (_test.go alongside source)
+9. **Race detection**: `go test -race ./...`
+
+## Testing Stack
+
+- `testing` — standard library (primary)
+- `github.com/stretchr/testify/assert` — assertion helpers
+- `github.com/stretchr/testify/mock` — mock generation
+- Acceptance tests: `//go:build acceptance` tag, build real binary, test stdout/stderr/exit codes
+
+## Key Dependencies
+
+- `github.com/spf13/cobra` — CLI framework
+- `github.com/charmbracelet/bubbletea` — TUI framework
+- `github.com/charmbracelet/bubbles` — TUI components
+- `github.com/charmbracelet/lipgloss` — TUI styling
+- `golang.org/x/oauth2` — OAuth2 handling
+- `google.golang.org/api` — Google APIs (Drive, Gmail)
+- `github.com/stretchr/testify` — Testing
+
+## Makefile Targets
+
+All commands go through the Makefile:
+- `make build` — Compile the binary
+- `make test` — Unit tests with race detection
+- `make test-accept` — Acceptance tests
+- `make lint` — golangci-lint + actionlint
+- `make vet` — go vet
+- `make tidy` — go mod tidy with verification
+
+## File Organization
+
+NEVER save to root folder. Use:
+- `cmd/pkb/` — CLI entry point
+- `internal/` — Internal packages
+- `tests/acceptance/` — Acceptance tests
+- `docs/` — Documentation
+
+## Acceptance Checks
+
+Before reporting success, verify:
+1. `make vet` passes
+2. `make lint` passes
+3. `make build` produces a working binary
+4. `make test` passes with race detection
+5. `make test-accept` passes
+6. All new code has corresponding tests
+7. No `log.Fatal()` or `os.Exit()` outside main()
+8. All external dependencies are behind interfaces
+
+## Status Reporting
+
+When complete, write your status. If the environment variable `$KILROY_STAGE_STATUS_PATH` is set, write JSON to that path. If that write fails and `$KILROY_STAGE_STATUS_FALLBACK_PATH` is set, write to the fallback path instead.
+
+```json
+{\"status\": \"success\", \"summary\": \"Implemented <description>\"}
+```
+
+Or on failure:
+```json
+{\"status\": \"fail\", \"summary\": \"<what failed>\", \"failure_class\": \"code_error\"}
+```
+
+If neither path is set, print the status JSON to stdout as a last resort."]
+  check_implement [shape=diamond]
+  verify_vet [shape=parallelogram, tool_command="make vet", timeout="60s"]
+  check_vet [shape=diamond]
+  verify_lint [shape=parallelogram, tool_command="make lint", timeout="120s"]
+  check_lint [shape=diamond]
+  verify_build [shape=parallelogram, tool_command="make build", timeout="120s"]
+  check_build [shape=diamond]
+  verify_test [shape=parallelogram, tool_command="make test", timeout="120s"]
+  check_test [shape=diamond]
+  verify_test_accept [shape=parallelogram, tool_command="make test-accept", timeout="120s"]
+  check_test_accept [shape=diamond]
+  review_final [shape=box, class="verify", goal_gate=true, prompt="# PKB Final Review
+
+You are the final semantic reviewer for the PKB implementation. All deterministic tool gates (vet, lint, build, test, test-accept) have already passed. Your job is to verify fidelity to the specification and adherence to factory constraints.
+
+## Instructions
+
+1. Read the specifications at `openspec/specs/` (intent, contracts, constraints for each capability)
+2. Read the factory constraints at `openspec/specs/factory/constraints.md`
+3. Examine the implementation code
+4. Evaluate each acceptance criterion below
+5. Write your review to `.ai/review_final.md`
+
+## Acceptance Criteria
+
+### TDD & Testing (AC-T1 through AC-T5)
+
+- **AC-T1**: Every new function/method has a corresponding test
+- **AC-T2**: Tests follow table-driven pattern where multiple cases exist
+- **AC-T3**: Tests are in the same package (_test.go alongside source)
+- **AC-T4**: Acceptance tests exist for all user-facing CLI commands and HTTP endpoints
+- **AC-T5**: Acceptance tests build the real binary and execute as subprocess (never import internal packages)
+
+### Code Quality (AC-Q1 through AC-Q5)
+
+- **AC-Q1**: `main()` is a thin wrapper calling `run() error`
+- **AC-Q2**: No `log.Fatal()` or `os.Exit()` outside of `main()`
+- **AC-Q3**: All OS/system/network interaction is behind interfaces (mockable in tests)
+- **AC-Q4**: Error handling uses returned errors, not panics
+- **AC-Q5**: No hardcoded secrets, credentials, or absolute paths
+
+### Specification Fidelity (AC-S1 through AC-S5)
+
+- **AC-S1**: All requirements marked SHALL/MUST in specs are implemented
+- **AC-S2**: API contracts (routes, request/response shapes) match spec definitions
+- **AC-S3**: Constraint invariants are satisfied (SLOs, security requirements)
+- **AC-S4**: No features added beyond what the specification requires
+- **AC-S5**: CLI commands and flags match what the specification defines
+
+### Build & CI (AC-B1 through AC-B3)
+
+- **AC-B1**: `make vet` passes
+- **AC-B2**: `make lint` passes
+- **AC-B3**: `make test` and `make test-accept` both pass
+
+## Output Format
+
+Write your review to `.ai/review_final.md` in this format:
+
+```markdown
+# Final Review
+
+## Summary
+<1-2 sentence overall assessment>
+
+## Acceptance Criteria Results
+
+| ID | Description | Result | Notes |
+|----|-------------|--------|-------|
+| AC-T1 | Every function has tests | PASS/FAIL | <details> |
+| AC-T2 | Table-driven tests | PASS/FAIL | <details> |
+...
+
+## Failed Criteria
+<details on each failure, if any>
+
+## Recommendation
+PASS or FAIL
+
+## Failure Signature
+<comma-separated list of failed AC IDs, or \"none\">
+```
+
+## Status Reporting
+
+After writing your review, report status:
+
+If `$KILROY_STAGE_STATUS_PATH` is set, write JSON to that path. If that write fails and `$KILROY_STAGE_STATUS_FALLBACK_PATH` is set, write to the fallback path instead.
+
+```json
+{\"status\": \"success\", \"summary\": \"Review passed all acceptance criteria\"}
+```
+
+Or on failure:
+```json
+{\"status\": \"fail\", \"summary\": \"Review failed: AC-T1, AC-Q3\", \"failure_signature\": \"AC-T1,AC-Q3\"}
+```
+
+If neither path is set, print the status JSON to stdout as a last resort."]
+  postmortem [shape=box, prompt="# PKB Pipeline Postmortem
+
+You are analyzing a pipeline failure. Your job is to diagnose what went wrong and write repair guidance for the next implementation iteration.
+
+## Instructions
+
+1. Read the pipeline stage outputs and logs to identify which gate or review failed
+2. Examine the code changes that caused the failure
+3. Identify the root cause
+4. Write specific, actionable repair guidance
+5. Output to `.ai/postmortem_latest.md`
+
+## Failure Modes
+
+Common failure patterns in the PKB pipeline:
+
+- **Vet failure**: Suspicious constructs, unreachable code, incorrect format strings
+- **Lint failure**: golangci-lint violations (unused vars, error handling, style)
+- **Build failure**: Compilation errors, missing imports, type mismatches
+- **Test failure**: Unit test assertions failing, race conditions detected
+- **Acceptance test failure**: Binary behavior doesn't match expected CLI output
+- **Review failure**: Specification fidelity issues, missing tests, constraint violations
+
+## Output Format
+
+Write to `.ai/postmortem_latest.md`:
+
+```markdown
+# Postmortem
+
+## Summary
+<1-2 sentences: what failed and why>
+
+## Evidence
+<Specific error messages, log lines, or test output that show the failure>
+
+## Root Cause
+<What specifically caused the failure — file, function, line if possible>
+
+## Repair Guidance
+<Specific instructions for the next implementation iteration:
+ - Which files to modify
+ - What changes to make
+ - What to preserve (don't break working code)>
+
+## Verification
+<How to verify the repair worked — specific commands to run>
+```
+
+## Critical Rules
+
+- **Be specific**: Name exact files, functions, and line ranges
+- **Preserve working code**: Clearly state what is already correct and must not be changed
+- **One root cause**: Focus on the primary failure, not secondary symptoms
+- **Actionable guidance**: The implementing agent should be able to follow your instructions without guessing
+
+## Status Reporting
+
+After writing the postmortem, report status:
+
+If `$KILROY_STAGE_STATUS_PATH` is set, write JSON to that path. If that write fails and `$KILROY_STAGE_STATUS_FALLBACK_PATH` is set, write to the fallback path instead.
+
+```json
+{\"status\": \"success\", \"summary\": \"Postmortem complete: <root cause summary>\"}
+```
+
+If neither path is set, print the status JSON to stdout as a last resort."]
+  human_gate [shape=hexagon, question="The pipeline has exhausted its retry budget.
+
+Check `/kilroy:status` for pipeline state and `.ai/postmortem_latest.md` for failure analysis.
+
+Options:
+1. **Retry after manual fix** — Make changes, then select Retry
+2. **Abort pipeline** — Stop the run", options="Retry after manual fix,Abort pipeline"]
+
+  start -> implement
+  implement -> check_implement
+  check_implement -> verify_vet [condition="outcome = success"]
+  check_implement -> implement [condition="outcome = fail && context.failure_class = transient_infra", loop_restart=true]
+  check_implement -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_implement -> postmortem
+  verify_vet -> check_vet
+  check_vet -> verify_lint [condition="outcome = success"]
+  check_vet -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_vet -> postmortem
+  verify_lint -> check_lint
+  check_lint -> verify_build [condition="outcome = success"]
+  check_lint -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_lint -> postmortem
+  verify_build -> check_build
+  check_build -> verify_test [condition="outcome = success"]
+  check_build -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_build -> postmortem
+  verify_test -> check_test
+  check_test -> verify_test_accept [condition="outcome = success"]
+  check_test -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_test -> postmortem
+  verify_test_accept -> check_test_accept
+  check_test_accept -> review_final [condition="outcome = success"]
+  check_test_accept -> implement [condition="outcome = fail && context.failure_class = transient_infra", loop_restart=true]
+  check_test_accept -> postmortem [condition="outcome = fail && context.failure_class != transient_infra"]
+  check_test_accept -> postmortem
+  review_final -> exit [condition="outcome = success"]
+  review_final -> postmortem [condition="outcome = fail"]
+  review_final -> postmortem
+  postmortem -> human_gate
+  human_gate -> implement [label="Retry"]
+  human_gate -> exit [label="Abort"]
+}

@@ -1,0 +1,203 @@
+target: personal-knowledge-base
+repo_path: .
+output_dot: pipeline.dot
+
+graph_id: pkb_pipeline
+graph_goal: "a Go CLI application (pkb) that provides unified search across personal knowledge sources (Obsidian, Google Drive, Gmail, Notion) with OAuth authentication, a TUI, web UI, and HTTP API — per all files under openspec/specs/ (intent, contracts, and constraints)"
+topology: no-fanout
+default_max_retry: 3
+retry_target: implement
+fallback_retry_target: postmortem
+
+nodes:
+  - id: start
+    shape: Mdiamond
+  - id: exit
+    shape: Msquare
+  - id: implement
+    shape: box
+    class: hard
+  - id: check_implement
+    shape: diamond
+  - id: verify_vet
+    shape: parallelogram
+  - id: check_vet
+    shape: diamond
+  - id: verify_lint
+    shape: parallelogram
+  - id: check_lint
+    shape: diamond
+  - id: verify_build
+    shape: parallelogram
+  - id: check_build
+    shape: diamond
+  - id: verify_test
+    shape: parallelogram
+  - id: check_test
+    shape: diamond
+  - id: verify_test_accept
+    shape: parallelogram
+  - id: check_test_accept
+    shape: diamond
+  - id: review_final
+    shape: box
+    class: verify
+    goal_gate: true
+  - id: postmortem
+    shape: box
+  - id: human_gate
+    shape: hexagon
+    options: "Retry after manual fix,Abort pipeline"
+
+edges:
+  - from: start
+    to: implement
+  - from: implement
+    to: check_implement
+  - from: check_implement
+    to: verify_vet
+    condition: "outcome = success"
+  - from: check_implement
+    to: implement
+    condition: "outcome = fail && context.failure_class = transient_infra"
+    loop_restart: true
+  - from: check_implement
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_implement
+    to: postmortem
+  - from: verify_vet
+    to: check_vet
+  - from: check_vet
+    to: verify_lint
+    condition: "outcome = success"
+  - from: check_vet
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_vet
+    to: postmortem
+  - from: verify_lint
+    to: check_lint
+  - from: check_lint
+    to: verify_build
+    condition: "outcome = success"
+  - from: check_lint
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_lint
+    to: postmortem
+  - from: verify_build
+    to: check_build
+  - from: check_build
+    to: verify_test
+    condition: "outcome = success"
+  - from: check_build
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_build
+    to: postmortem
+  - from: verify_test
+    to: check_test
+  - from: check_test
+    to: verify_test_accept
+    condition: "outcome = success"
+  - from: check_test
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_test
+    to: postmortem
+  - from: verify_test_accept
+    to: check_test_accept
+  - from: check_test_accept
+    to: review_final
+    condition: "outcome = success"
+  - from: check_test_accept
+    to: implement
+    condition: "outcome = fail && context.failure_class = transient_infra"
+    loop_restart: true
+  - from: check_test_accept
+    to: postmortem
+    condition: "outcome = fail && context.failure_class != transient_infra"
+  - from: check_test_accept
+    to: postmortem
+  - from: review_final
+    to: exit
+    condition: "outcome = success"
+  - from: review_final
+    to: postmortem
+    condition: "outcome = fail"
+  - from: review_final
+    to: postmortem
+  - from: postmortem
+    to: human_gate
+  - from: human_gate
+    to: implement
+    label: "Retry"
+  - from: human_gate
+    to: exit
+    label: "Abort"
+
+goal: |
+  Implement the PKB application per the specifications at `openspec/specs/` (intent, contracts, and constraints).
+
+  PKB is a Go CLI application providing unified search across personal knowledge sources.
+
+  Project structure:
+  - `cmd/pkb/main.go` — CLI entry point (thin wrapper calling run() error)
+  - `internal/auth/` — OAuth flow handling (Google OAuth, token storage)
+  - `internal/config/` — Configuration loading (XDG paths, env vars)
+  - `internal/connectors/` — Source adapters (gdrive, gmail, notion, obsidian, claude)
+  - `internal/search/` — Search engine (unified search across connectors)
+  - `internal/server/` — HTTP server (REST API, health endpoint)
+  - `internal/tui/` — Terminal UI (bubbletea-based interactive search)
+  - `internal/web/` — Web UI (embedded HTML/JS)
+  - `internal/apiclient/` — HTTP client for API calls
+  - `internal/tailscale/` — Tailscale integration for remote access
+  - `tests/acceptance/` — Acceptance tests (build real binary, black-box testing)
+  - `tests/live/` — Live API tests (requires credentials)
+  - `tests/e2e/` — Playwright E2E tests (web UI)
+
+  Key conventions:
+  - Go 1.25, Cobra CLI framework, bubbletea TUI
+  - Strict TDD: write failing test first, minimum code to pass, refactor
+  - Testing pyramid: unit (many) → integration (fewer) → acceptance (fewest)
+  - 100% line coverage on new code
+  - main() is a thin wrapper calling run() error — test run(), not main()
+  - Never use log.Fatal() or os.Exit() outside main() — return errors
+  - All OS/system/network interaction behind interfaces — mock in tests
+  - Makefile targets for all developer commands
+
+rules:
+  - "After default_max_retry exhausted, route to a shape=hexagon human gate instead of failing"
+  - "Human gate question must direct operator to /kilroy:status and .ai/postmortem_latest.md"
+  - "Edge condition expressions MUST have spaces around operators"
+  - "All code MUST be developed using strict TDD: RED → GREEN → REFACTOR"
+  - "100% line coverage on new code — every line exists because a test demanded it"
+  - "main() is a thin wrapper calling run() error — test run(), not main()"
+  - "Never use log.Fatal() or os.Exit() outside main() — return errors"
+  - "All OS/system/network interaction behind interfaces — mock in tests"
+  - "Acceptance tests build real binary and execute as subprocess (black box)"
+  - "Tests in same package (_test.go files alongside source)"
+  - "Table-driven tests for multiple cases"
+
+required_gates:
+  - id: verify_vet
+    tool_command: "make vet"
+    timeout: "60s"
+  - id: verify_lint
+    tool_command: "make lint"
+    timeout: "120s"
+  - id: verify_build
+    tool_command: "make build"
+    timeout: "120s"
+  - id: verify_test
+    tool_command: "make test"
+    timeout: "120s"
+  - id: verify_test_accept
+    tool_command: "make test-accept"
+    timeout: "120s"
+
+model_stylesheet: |
+  * { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }
+  .hard { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }
+  .verify { llm_model: claude-sonnet-4-6; llm_provider: anthropic; max_tokens: 65536; }

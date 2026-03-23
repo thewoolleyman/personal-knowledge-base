@@ -1,0 +1,35 @@
+version: 1
+
+repo:
+  path: .
+
+cxdb:
+  binary_addr: 127.0.0.1:9109
+  http_base_url: http://127.0.0.1:9110
+  autostart:
+    enabled: false
+
+modeldb:
+  openrouter_model_info_path: ../kilroy/internal/attractor/modeldb/pinned/openrouter_models.json
+  openrouter_model_info_update_policy: pinned
+
+llm:
+  cli_profile: real
+  providers:
+    anthropic:
+      backend: api
+      failover: []
+
+git:
+  require_clean: false
+  run_branch_prefix: attractor/run
+  commit_per_node: true
+
+setup:
+  timeout_ms: 300000
+  commands:
+    # Hide holdout scenarios from factory agents via sparse checkout.
+    # Uses \041 (octal for '!') because shells on macOS backslash-escape '!'
+    # even inside single quotes. We write the sparse-checkout pattern file
+    # directly because `git sparse-checkout set` also escapes '!' in negation patterns.
+    - "GITDIR=$(git rev-parse --git-dir) && mkdir -p \"$GITDIR/info\" && /usr/bin/printf '/*\\n\\041/holdout-scenarios\\n' > \"$GITDIR/info/sparse-checkout\" && git config --worktree core.sparseCheckout true && git read-tree -mu HEAD"
