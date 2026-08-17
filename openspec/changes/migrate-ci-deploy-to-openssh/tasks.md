@@ -1,3 +1,16 @@
+> **NOTE 2026-08-17:** `tag:ci` itself is now GONE from `tailscale-admin/policy.hujson`
+> (PR #33, tailnet tag apparatus retired fleet-wide) — not merely deprecated for
+> this deployment's SSH usage. Task 3.2's premise ("keep `tag:ci` only for
+> Tailscale network reachability") no longer holds: there is no `tag:ci` left to
+> keep, for reachability or anything else. This repo's `.github/workflows/ci-cd.yml`
+> deploy stage's three Tailscale-dependent steps (Setup Tailscale, Deploy via
+> Tailscale SSH, Verify deployment health) are parked (commented out) as of the
+> same date so CI stops requesting an undefined tag on every push. This migration
+> now needs a plain host/IP-scoped path with NO ephemeral source tag at all (the
+> `autogroup:member -> autogroup:member` grant already covers reachability to the
+> ordinary-member VPS), not a `tag:ci`-sourced network grant as originally scoped.
+> Re-scope task 3.2 accordingly before resuming this work.
+
 ## 1. Define and test the workflow contract
 
 - [ ] 1.1 Add tests that require ordinary OpenSSH inputs, pinned host verification, and a Tailscale-only destination.
