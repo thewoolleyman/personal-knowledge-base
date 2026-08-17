@@ -467,32 +467,42 @@ jobs:
           echo "deploy_skip=false" >> "$GITHUB_OUTPUT"
         id: check_deploy
 
-      - name: Setup Tailscale
-        if: steps.check_deploy.outputs.deploy_skip != 'true'
-        uses: tailscale/github-action@v3
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Deploy via Tailscale SSH
-        if: steps.check_deploy.outputs.deploy_skip != 'true'
-        env:
-          DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
-        run: |
-          ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" bash -lc '
-            set -e
-            cd /data/projects/personal-knowledge-base
-            git pull --ff-only origin main
-            make deploy-local
-          '
-
-      - name: Verify deployment health
-        if: steps.check_deploy.outputs.deploy_skip != 'true'
-        env:
-          DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
-        run: |
-          sleep 3
-          ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" "curl -sf http://localhost:9000/health || exit 1"
-          echo "Deployment health check passed"
+      # Parked 2026-08-17: tag:ci was removed from the peer tailscale-admin
+      # repository's policy (tailnet tag apparatus retired fleet-wide,
+      # maintainer ruling 2026-08-17, tailscale-admin PR #33). Requesting
+      # tag:ci here would now fail on every run instead of deploying, so
+      # this step (and the two below that depend on its tailnet connection)
+      # are disabled rather than left to fail noisily on an undefined tag.
+      # Tracked replacement: openspec/changes/migrate-ci-deploy-to-openssh
+      # (plain keyed OpenSSH over a host-scoped network grant, no tailnet
+      # tag on either side).
+      #
+      # - name: Setup Tailscale
+      #   if: steps.check_deploy.outputs.deploy_skip != 'true'
+      #   uses: tailscale/github-action@v3
+      #   with:
+      #     oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      #     oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+      #     tags: tag:ci
+      #
+      # - name: Deploy via Tailscale SSH
+      #   if: steps.check_deploy.outputs.deploy_skip != 'true'
+      #   env:
+      #     DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
+      #   run: |
+      #     ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" bash -lc '
+      #       set -e
+      #       cd /data/projects/personal-knowledge-base
+      #       git pull --ff-only origin main
+      #       make deploy-local
+      #     '
+      #
+      # - name: Verify deployment health
+      #   if: steps.check_deploy.outputs.deploy_skip != 'true'
+      #   env:
+      #     DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
+      #   run: |
+      #     sleep 3
+      #     ssh -o StrictHostKeyChecking=no "$DEPLOY_TARGET" "curl -sf http://localhost:9000/health || exit 1"
+      #     echo "Deployment health check passed"
 
